@@ -224,21 +224,23 @@ async function readDatabaseSnapshot(
   const displayName = profile.display_name ?? profile.first_name ?? displayFromExternalId(externalId, 0);
   const lifecycleConfidence = Number(profile.lifecycle_stage_confidence ?? 0);
   const stateSections = buildStateSections({ facts, preferences, milestones, communicationStyle });
+  const selectedUser = users.find((user) => user.id === externalId);
+  const userOption = {
+    id: externalId,
+    label: selectedUser?.label ?? displayName,
+    sublabel: externalId,
+    lifecycleStage: profile.lifecycle_stage ?? "unknown",
+    status: lifecycleConfidence > 0.75 ? "active" : lifecycleConfidence > 0 ? "warming" : "quiet",
+  } satisfies DemoUserOption;
 
   return {
     generatedAt: new Date().toISOString(),
     refreshMs: REFRESH_MS,
     selectedUserId: externalId,
-    users: ensureSelectedUser(users, {
-      id: externalId,
-      label: displayName,
-      sublabel: externalId,
-      lifecycleStage: profile.lifecycle_stage ?? "unknown",
-      status: lifecycleConfidence > 0.75 ? "active" : lifecycleConfidence > 0 ? "warming" : "quiet",
-    }),
+    users: ensureSelectedUser(users, userOption),
     source: "database",
     userState: {
-      displayName,
+      displayName: userOption.label,
       externalId,
       lifecycleStage: profile.lifecycle_stage ?? "unknown",
       lifecycleConfidence,

@@ -17,8 +17,38 @@ export function buildReply(input: ReplyInput): string {
 }
 
 function answerForIntent(intent: StudentIntent, stage: LifecycleStage): string {
+  if (stage === "junior") {
+    return answerForJuniorIntent(intent);
+  }
+
   if (intent === "financial_aid") {
-    return "Yep, money is one of the first things I would check too. The quick move is to separate sticker price from actual net cost, then look at FAFSA, school scholarships, and local awards.";
+    return [
+      "Cost matters. We should estimate what each school will likely cost after aid.",
+      "Pick one:",
+      "1. Estimate one school's cost",
+      "2. Learn what FAFSA does",
+      "3. Compare aid between schools",
+    ].join("\n");
+  }
+
+  if (intent === "scholarships") {
+    return [
+      "Scholarships are worth tracking early.",
+      "Pick one:",
+      "1. Find scholarships for one school",
+      "2. Find scholarships near where I live",
+      "3. Start a scholarship deadline tracker",
+    ].join("\n");
+  }
+
+  if (intent === "campus_visit") {
+    return [
+      "A campus visit should have a plan, not just a tour.",
+      "Pick one:",
+      "1. Plan a visit for one school",
+      "2. Make a visit checklist",
+      "3. Track questions, schedule, and follow-up",
+    ].join("\n");
   }
 
   if (intent === "transfer") {
@@ -42,6 +72,52 @@ function answerForIntent(intent: StudentIntent, stage: LifecycleStage): string {
   }
 
   return `Got it. Since you are in the ${stage.replace("_", " ")} lane, I will keep the advice matched to where you are right now.`;
+}
+
+function answerForJuniorIntent(intent: StudentIntent): string {
+  if (intent === "financial_aid") {
+    return [
+      "Cost matters. Use a financial aid estimate for each school.",
+      "Pick one:",
+      "1. Estimate one school's real cost",
+      "2. See what FAFSA and grants could cover",
+      "3. Compare two schools by remaining cost",
+    ].join("\n");
+  }
+
+  if (intent === "scholarships") {
+    return [
+      "Start a scholarship tracker now.",
+      "Pick one:",
+      "1. Search school scholarships",
+      "2. Search local scholarships",
+      "3. Track deadlines, eligibility, amounts, and status",
+    ].join("\n");
+  }
+
+  if (intent === "campus_visit") {
+    return [
+      "Plan campus visits before senior year gets busy.",
+      "Pick one:",
+      "1. Plan a visit for one school",
+      "2. Make a visit checklist",
+      "3. Track questions, schedule, and follow-up",
+    ].join("\n");
+  }
+
+  if (intent === "application") {
+    return "You are in 11th grade, so your job is preparation. Build a school list, track requirements, and know which deadlines will hit first in senior year.";
+  }
+
+  if (intent === "college_search") {
+    return "Start with a realistic school list. Compare each school by major fit, cost, location, admissions difficulty, and support for finishing.";
+  }
+
+  if (intent === "career") {
+    return "Pick a direction, then test it. Choose one or two career interests and compare the majors, classes, and jobs connected to each.";
+  }
+
+  return "You are in 11th grade. Focus on the next clear step: choose a direction, build a school list, check cost, and make a timeline for senior-year deadlines.";
 }
 
 function buildReanchor(profile: StudentProfileState, openLoops: AgentOpenLoop[]): string | undefined {

@@ -125,6 +125,162 @@ export const lifecycleTools = [
     },
   }),
   defineTool({
+    key: "scholarship_discovery_tracker",
+    description:
+      "Help juniors discover and track scholarships by school, local area, major, eligibility, deadline, amount, application link, and status.",
+    inputSchema: z.object({
+      schools: z.array(z.string()).default([]),
+      location: z.string().optional(),
+      interests: z.array(z.string()).default([]),
+      studentYear: z.enum(["junior", "senior", "unknown"]).default("junior"),
+    }),
+    lifecycleStages: ["junior", "senior", "transfer", "gap_year"],
+    async execute(input) {
+      return {
+        mode: "scholarship_discovery_tracking",
+        searchPriority: [
+          "School scholarships for the colleges the student is considering.",
+          "Local scholarships near the student's city, county, or state.",
+          "Major or career scholarships connected to the student's interests.",
+        ],
+        trackingFields: [
+          "scholarshipName",
+          "schoolOrOrganization",
+          "eligibility",
+          "deadline",
+          "amount",
+          "applicationLink",
+          "status",
+        ],
+        statusOptions: ["not_started", "in_progress", "submitted", "awarded", "not_selected"],
+        schools: input.schools,
+        location: input.location,
+        interests: input.interests,
+        studentYear: input.studentYear,
+        choiceOptions: [
+          "1. Search school scholarships",
+          "2. Search local scholarships",
+          "3. Track deadlines, eligibility, amounts, and status",
+        ],
+        nextStep:
+          "Show numbered choices instead of an open-ended question. Let the student answer with 1, 2, or 3.",
+      };
+    },
+  }),
+  defineTool({
+    key: "financial_aid_estimator",
+    description:
+      "Estimate what a school will likely cost after grants, scholarships, work-study, loans, housing, and out-of-pocket budget.",
+    inputSchema: z.object({
+      school: z.string().optional(),
+      location: z.string().optional(),
+      housingPlan: z.enum(["live_at_home", "commute", "on_campus", "off_campus", "unknown"]).default("unknown"),
+      annualFamilyBudget: z.number().nonnegative().optional(),
+      fafsaEligibility: z.enum(["eligible", "not_eligible", "unknown"]).default("unknown"),
+    }),
+    lifecycleStages: ["junior", "senior", "transfer", "current_college", "gap_year"],
+    async execute(input) {
+      return {
+        mode: "financial_aid_estimator",
+        estimateFields: [
+          "tuitionAndFees",
+          "housingOrCommuting",
+          "booksAndSupplies",
+          "estimatedGrants",
+          "estimatedScholarships",
+          "possibleWorkStudy",
+          "possibleLoans",
+          "remainingCost",
+        ],
+        aidSources: [
+          "FAFSA and federal student aid when the student is eligible.",
+          "State aid and grants based on the student's area.",
+          "School-specific scholarships and need-based aid.",
+        ],
+        privacyNote:
+          "Do not ask for SSN, exact address, student ID, tax records, parent records, or bank details. Send private FAFSA details to StudentAid.gov or official school portals.",
+        school: input.school,
+        location: input.location,
+        housingPlan: input.housingPlan,
+        annualFamilyBudget: input.annualFamilyBudget,
+        fafsaEligibility: input.fafsaEligibility,
+        choiceOptions: [
+          "1. Estimate one school's real cost",
+          "2. See what FAFSA and grants could cover",
+          "3. Compare two schools by remaining cost",
+        ],
+        nextStep: input.school
+          ? "Show numbered choices for the next estimator step. Let the student answer with 1, 2, or 3."
+          : "Show numbered choices instead of an open-ended question. Let the student answer with 1, 2, or 3.",
+      };
+    },
+  }),
+  defineTool({
+    key: "campus_visit_planner",
+    description:
+      "Help juniors plan detailed college visits, including tour scheduling, travel timing, questions to ask, campus offices to meet, and post-visit tracking.",
+    inputSchema: z.object({
+      schools: z.array(z.string()).default([]),
+      location: z.string().optional(),
+      visitType: z.enum(["official_tour", "open_house", "admitted_student_day", "self_guided", "virtual", "unknown"]).default("unknown"),
+      interests: z.array(z.string()).default([]),
+      travelWindow: z.string().optional(),
+    }),
+    lifecycleStages: ["junior", "senior", "transfer", "gap_year"],
+    async execute(input) {
+      return {
+        mode: "campus_visit_planning",
+        planSections: [
+          "Choose the school and visit type.",
+          "Schedule the official tour or information session.",
+          "Add major/program meetings, financial aid, housing, and admissions if available.",
+          "Plan travel time, parking, meals, and who is going.",
+          "Prepare questions before the visit.",
+          "Track notes and next steps after the visit.",
+        ],
+        visitChecklist: [
+          "Book the tour or open house.",
+          "Confirm date, time, location, parking, and check-in instructions.",
+          "Ask to meet admissions, financial aid, housing, or the department for the student's major.",
+          "Visit classrooms, library, dining, housing, student center, and commute/parking areas.",
+          "Take notes on cost, fit, support, safety, transportation, and student life.",
+        ],
+        questionCategories: [
+          "Admissions requirements",
+          "Major/program fit",
+          "Scholarships and financial aid",
+          "Housing and commuting",
+          "Student support and tutoring",
+          "Internships, jobs, and outcomes",
+        ],
+        trackingFields: [
+          "schoolName",
+          "visitDate",
+          "visitType",
+          "scheduledStatus",
+          "peopleToMeet",
+          "questionsToAsk",
+          "travelDetails",
+          "postVisitRating",
+          "nextStep",
+        ],
+        statusOptions: ["not_started", "scheduled", "visited", "follow_up_needed", "completed"],
+        schools: input.schools,
+        location: input.location,
+        visitType: input.visitType,
+        interests: input.interests,
+        travelWindow: input.travelWindow,
+        choiceOptions: [
+          "1. Plan a visit for one school",
+          "2. Make a visit checklist",
+          "3. Track questions, schedule, and follow-up",
+        ],
+        nextStep:
+          "Show numbered choices instead of an open-ended question. Let the student answer with 1, 2, or 3.",
+      };
+    },
+  }),
+  defineTool({
     key: "application_deadline_tracker",
     description: "Track senior-year application and aid deadlines.",
     inputSchema: z.object({

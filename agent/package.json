@@ -11,6 +11,7 @@
     "start:terminal": "AGENT_TRANSPORT=terminal node --env-file=.env --import tsx src/index.ts",
     "dev": "node --env-file=.env --import tsx --watch src/index.ts",
     "dev:terminal": "AGENT_TRANSPORT=terminal node --env-file=.env --import tsx --watch src/index.ts",
+    "import:scorecard": "node --env-file=.env --import tsx src/data/import-scorecard-institutions.ts",
     "test:onboarding": "node --import tsx src/demo/onboarding-smoke.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createOpenLoop } from "../agent/state-store.ts";
+import { lookupScorecardInstitution } from "../data/scorecard-search.ts";
 import { defineTool } from "./types.ts";
 
 const jsonRecordSchema = z.record(z.string(), z.unknown());
@@ -163,17 +164,30 @@ export const globalTools = [
   }),
   defineTool({
     key: "lookup_college",
-    description: "Look up real institution facts from a college data source.",
+    description: "Look up real institution facts from imported College Scorecard data.",
     inputSchema: z.object({
       query: z.string().min(1),
       region: z.string().optional(),
     }),
     async execute(input) {
+      const result = await lookupScorecardInstitution({
+        query: input.query,
+        state: input.region,
+      });
+
+      if (result) {
+        return {
+          status: "ok",
+          source: "College Scorecard",
+          institution: result,
+        };
+      }
+
       return {
+        status: "not_found",
+        source: "College Scorecard",
         query: input.query,
         region: input.region,
-        status: "not_connected",
-        nextStep: "Wire this tool to College Scorecard before using it for factual school answers.",
       };
     },
   }),

@@ -1,9 +1,10 @@
 import type { LlmToolDefinition } from "../tools/types.ts";
 
-export type AgentChannel = "imessage" | "sms" | "gmail" | "website" | "mobile_app" | "terminal";
+export type AgentChannel = "imessage" | "sms" | "email" | "gmail" | "website" | "mobile_app" | "terminal";
 
 export type LifecycleStage =
   | "unknown"
+  | "freshman"
   | "sophomore"
   | "junior"
   | "senior"

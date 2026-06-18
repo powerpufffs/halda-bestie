@@ -1,6 +1,13 @@
 import { getLifecycleProfile } from "./profiles/index.ts";
 import { assembleToolBundle } from "./tool-bundles.ts";
-import type { AgentEvent, AgentTurnInput, AgentTurnResult, StudentProfileState } from "./types.ts";
+import type {
+  AgentEvent,
+  AgentTurnInput,
+  AgentTurnResult,
+  ConversationState,
+  StudentProfileState,
+} from "./types.ts";
+import { resolveAgentPriority, syncConfiguredAgentPriorities } from "./agent-priority.ts";
 import { appendRecentTurn, readRecentTurns } from "./conversation-history.ts";
 import { generateReply, type LlmRuntime } from "./generation.ts";
 import { advanceOnboarding } from "./onboarding.ts";
@@ -23,39 +30,8 @@ export async function handleAgentTurn(
   const events: AgentEvent[] = [];
 
   const triage = triageTurn(input.text, profile);
-  await store.logMessage({
-    userId: input.userId,
-    threadId: input.threadId,
-    channel: input.channel,
-    role: "user",
-    body: input.text,
-    status: "received",
-    externalMessageId: input.externalMessageId,
-    metadata: { triage },
-    occurredAt: input.timestamp,
-    processedAt: new Date(),
-  });
-  const inferredProfile = getLifecycleProfile(triage.lifecycleStage);
-  const profileChanged =
-    triage.lifecycleStage !== profile.lifecycleStage ||
-    inferredProfile.profileKey !== profile.agentProfileKey;
-
-  if (profileChanged) {
-    profile = setLifecycleStage(
-      profile,
-      triage.lifecycleStage,
-      triage.lifecycleConfidence,
-      inferredProfile.profileKey,
-    );
-    events.push({
-      userId: input.userId,
-      threadId: input.threadId,
-      eventType: "lifecycle_stage_updated",
-      input: { text: input.text },
-      output: { stage: triage.lifecycleStage, reason: triage.lifecycleReason },
-      createdAt: input.timestamp,
-    });
-  }
+  await logInboundMessage(input, store, triage);
+  profile = applyLifecycleTriage(profile, input, triage, events);
 
   const onboarding = await advanceOnboarding({
     turn: input,
@@ -68,32 +44,34 @@ export async function handleAgentTurn(
   events.push(...onboarding.events);
 
   const selectedProfile = getLifecycleProfile(profile.lifecycleStage);
-  conversation = {
-    ...conversation,
-    agentProfileKey: selectedProfile.profileKey,
-    currentIntent: triage.intent,
-    slotValues: {
-      ...conversation.slotValues,
-      goalStack: onboarding.goalStack,
-      stateBlob: onboarding.stateBlob,
-      latestTriage: triage,
-    },
-    shortTermSummary: [
-      `Latest intent: ${triage.intent}.`,
-      `Onboarding: ${onboarding.resolution}.`,
-      `Active goals: ${onboarding.goalStack.join(", ") || "none"}.`,
-      `Latest message: ${input.text}`,
-    ].join(" "),
-  };
-
   const toolBundle = assembleToolBundle({
     channel: input.channel,
     lifecycleStage: profile.lifecycleStage,
     profile: selectedProfile,
     currentIntent: triage.intent,
   });
-
   profile = updateProfileFromTurn(profile, input.text, triage, toolBundle.selectedToolKeys);
+  const openLoops = await syncConfiguredAgentPriorities({
+    userId: input.userId,
+    threadId: input.threadId,
+    store,
+    profile,
+    profileConfig: selectedProfile,
+    openLoops: onboarding.openLoops,
+  });
+  const goalStack = openLoops.map((loop) => loop.loopType);
+  const agentPriority = resolveAgentPriority(openLoops);
+  conversation = buildConversationState({
+    agentPriority,
+    conversation,
+    goalStack,
+    input,
+    onboarding,
+    selectedProfile,
+    toolBundle,
+    triage,
+  });
+
   const { reply, generationMode } = await generateReplyWithFallback({
     text: input.text,
     triage,
@@ -101,39 +79,15 @@ export async function handleAgentTurn(
     turn: input,
     store,
     selectedProfile,
-    onboardingOpenLoops: onboarding.openLoops,
+    onboardingOpenLoops: openLoops,
     recentTurns,
     toolBundle,
     llmRuntime: options.llmRuntime,
     events,
   });
-  await store.logMessage({
-    userId: input.userId,
-    threadId: input.threadId,
-    channel: input.channel,
-    role: "assistant",
-    body: reply,
-    status: "queued",
-    metadata: {
-      generationMode,
-      selectedToolKeys: toolBundle.selectedToolKeys,
-    },
-    occurredAt: input.timestamp,
-    processedAt: new Date(),
-  });
+  await logAssistantMessage(input, store, reply, generationMode, toolBundle.selectedToolKeys);
   profile = rememberAgentReply(profile, reply, input.timestamp);
-  const nextRecentTurns = appendRecentTurn(recentTurns, {
-    user: input.text,
-    assistant: reply,
-    at: input.timestamp.toISOString(),
-  });
-  conversation = {
-    ...conversation,
-    slotValues: {
-      ...conversation.slotValues,
-      recentTurns: nextRecentTurns,
-    },
-  };
+  conversation = appendTurnHistory(conversation, recentTurns, input, reply);
 
   events.push({
     userId: input.userId,
@@ -155,8 +109,139 @@ export async function handleAgentTurn(
     conversation,
     selectedToolKeys: toolBundle.selectedToolKeys,
     toolCallDefinitions: toolBundle.toolCallDefinitions,
-    goalStack: onboarding.goalStack,
+    goalStack,
     events,
+  };
+}
+
+async function logInboundMessage(
+  input: AgentTurnInput,
+  store: AgentStateStore,
+  triage: TurnTriage,
+): Promise<void> {
+  await store.logMessage({
+    userId: input.userId,
+    threadId: input.threadId,
+    channel: input.channel,
+    role: "user",
+    body: input.text,
+    status: "received",
+    externalMessageId: input.externalMessageId,
+    metadata: { triage },
+    occurredAt: input.timestamp,
+    processedAt: new Date(),
+  });
+}
+
+function applyLifecycleTriage(
+  profile: StudentProfileState,
+  input: AgentTurnInput,
+  triage: TurnTriage,
+  events: AgentEvent[],
+): StudentProfileState {
+  const inferredProfile = getLifecycleProfile(triage.lifecycleStage);
+  const profileChanged =
+    triage.lifecycleStage !== profile.lifecycleStage ||
+    inferredProfile.name !== profile.agentProfileKey;
+  if (!profileChanged) return profile;
+
+  events.push({
+    userId: input.userId,
+    threadId: input.threadId,
+    eventType: "lifecycle_stage_updated",
+    input: { text: input.text },
+    output: { stage: triage.lifecycleStage, reason: triage.lifecycleReason },
+    createdAt: input.timestamp,
+  });
+
+  return setLifecycleStage(
+    profile,
+    triage.lifecycleStage,
+    triage.lifecycleConfidence,
+    inferredProfile.name,
+  );
+}
+
+interface BuildConversationStateInput {
+  agentPriority: ReturnType<typeof resolveAgentPriority>;
+  conversation: ConversationState;
+  goalStack: string[];
+  input: AgentTurnInput;
+  onboarding: Awaited<ReturnType<typeof advanceOnboarding>>;
+  selectedProfile: ReturnType<typeof getLifecycleProfile>;
+  toolBundle: ReturnType<typeof assembleToolBundle>;
+  triage: TurnTriage;
+}
+
+function buildConversationState(input: BuildConversationStateInput): ConversationState {
+  return {
+    ...input.conversation,
+    agentProfileKey: input.selectedProfile.name,
+    currentIntent: input.triage.intent,
+    slotValues: {
+      ...input.conversation.slotValues,
+      goalStack: input.goalStack,
+      stateBlob: {
+        ...input.onboarding.stateBlob,
+        goalStack: input.goalStack,
+      },
+      latestTriage: input.triage,
+      agentPriority: input.agentPriority ?? null,
+      activeIntent: {
+        name: input.toolBundle.activeIntent.name,
+        triggerCondition: input.toolBundle.activeIntent.triggerCondition,
+        toolKeys: input.toolBundle.selectedToolKeys,
+      },
+    },
+    shortTermSummary: [
+      `Latest intent: ${input.triage.intent}.`,
+      `Onboarding: ${input.onboarding.resolution}.`,
+      `Agent priority: ${input.agentPriority?.loopType ?? "none"}.`,
+      `Active goals: ${input.goalStack.join(", ") || "none"}.`,
+      `Latest message: ${input.input.text}`,
+    ].join(" "),
+  };
+}
+
+async function logAssistantMessage(
+  input: AgentTurnInput,
+  store: AgentStateStore,
+  reply: string,
+  generationMode: "llm" | "fallback",
+  selectedToolKeys: string[],
+): Promise<void> {
+  await store.logMessage({
+    userId: input.userId,
+    threadId: input.threadId,
+    channel: input.channel,
+    role: "assistant",
+    body: reply,
+    status: "queued",
+    metadata: {
+      generationMode,
+      selectedToolKeys,
+    },
+    occurredAt: input.timestamp,
+    processedAt: new Date(),
+  });
+}
+
+function appendTurnHistory(
+  conversation: ConversationState,
+  recentTurns: ReturnType<typeof readRecentTurns>,
+  input: AgentTurnInput,
+  reply: string,
+): ConversationState {
+  return {
+    ...conversation,
+    slotValues: {
+      ...conversation.slotValues,
+      recentTurns: appendRecentTurn(recentTurns, {
+        user: input.text,
+        assistant: reply,
+        at: input.timestamp.toISOString(),
+      }),
+    },
   };
 }
 
@@ -191,6 +276,7 @@ async function generateReplyWithFallback(
       openLoops: input.onboardingOpenLoops,
       recentTurns: input.recentTurns,
       triage: input.triage,
+      activeIntent: input.toolBundle.activeIntent,
       selectedToolKeys: input.toolBundle.selectedToolKeys,
       toolCallDefinitions: input.toolBundle.toolCallDefinitions,
       tools: input.toolBundle.tools,

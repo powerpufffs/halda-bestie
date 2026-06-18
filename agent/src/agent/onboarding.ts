@@ -3,6 +3,10 @@ import {
   type AgentStateStore,
   setLifecycleStage,
 } from "./state-store.ts";
+import {
+  collectLifecycleStagePriority,
+  collectPersonContextPriority,
+} from "./config/priorities.ts";
 import type { TriageCollegeIntent, TriageRole, TurnTriage } from "./triage.ts";
 import type {
   AgentEvent,
@@ -316,20 +320,19 @@ function getNeededOnboardingLoop(memory: OnboardingMemory) {
   if (memory.role === "unknown" || memory.collegeIntent === "unknown") {
     return {
       loopType: "identify_person_context",
-      priority: 30,
-      prompt:
-        "are you a student looking at college, helping someone, or not really looking at college?",
+      priority: collectPersonContextPriority.priority,
+      prompt: collectPersonContextPriority.prompt,
     };
   }
 
   if (!memory.complete) {
     return {
       loopType: "identify_grade_level",
-      priority: 20,
+      priority: collectLifecycleStagePriority.priority,
       prompt:
         memory.collegeIntent === "helping_someone"
           ? "what grade/year is the student you are helping - 10th, 11th, 12th, transfer, already in college, or something else?"
-          : "what grade/year are you - 10th, 11th, 12th, transfer, already in college, or something else?",
+          : collectLifecycleStagePriority.prompt,
     };
   }
 
@@ -387,5 +390,5 @@ function readEnum<T extends string>(value: unknown, allowed: T[]): T | undefined
 }
 
 function readLifecycleStage(value: unknown): LifecycleStage | undefined {
-  return readEnum(value, ["unknown", "sophomore", "junior", "senior", "transfer", "current_college", "gap_year"]);
+  return readEnum(value, ["unknown", "freshman", "sophomore", "junior", "senior", "transfer", "current_college", "gap_year"]);
 }

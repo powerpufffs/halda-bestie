@@ -9,7 +9,6 @@ import {
   parseIdentity,
   profileFromRow,
   textArray,
-  timestamptz,
   type ConversationStateRow,
   type IdRow,
   type OpenLoopRow,
@@ -23,6 +22,7 @@ import type {
   StudentProfileState,
 } from "./types.ts";
 import type { AgentStateStore } from "./state-store.ts";
+import { insertAgentEvent, insertMessageRecord } from "./postgres-state-writes.ts";
 
 export class PostgresAgentStateStore implements AgentStateStore {
   readonly #db: Database;
@@ -301,46 +301,13 @@ export class PostgresAgentStateStore implements AgentStateStore {
   async logMessage(message: AgentMessageRecord): Promise<void> {
     const participant = await this.#ensureUserIdentity(message.userId);
     const { conversationId } = await this.#ensureConversation(message.userId, message.threadId);
-    const isUserMessage = message.role === "user";
 
-    await this.#rows<IdRow>(sql`
-      insert into halda.messages (
-        conversation_id,
-        messaging_platform_id,
-        from_identity_id,
-        to_identity_id,
-        from_address,
-        to_address,
-        external_message_id,
-        external_thread_id,
-        role,
-        content_type,
-        body,
-        status,
-        occurred_at,
-        processed_at,
-        metadata
-      )
-      values (
-        ${conversationId}::uuid,
-        ${participant.platformId}::uuid,
-        ${isUserMessage ? sql`${participant.identityId}::uuid` : sql`null`},
-        ${isUserMessage ? sql`null` : sql`${participant.identityId}::uuid`},
-        ${isUserMessage ? participant.identity.externalIdentity : "halda-agent"},
-        ${isUserMessage ? "halda-agent" : participant.identity.externalIdentity},
-        ${message.externalMessageId ?? null},
-        ${message.threadId},
-        ${message.role},
-        'text',
-        ${message.body},
-        ${message.status},
-        ${timestamptz(message.occurredAt)},
-        ${message.processedAt ? timestamptz(message.processedAt) : null},
-        ${jsonb(message.metadata ?? {})}
-      )
-      on conflict do nothing
-      returning id
-    `);
+    await insertMessageRecord({
+      conversationId,
+      message,
+      participant,
+      rows: (query) => this.#rows(query),
+    });
   }
 
   async logEvents(events: AgentEvent[]): Promise<void> {
@@ -353,27 +320,12 @@ export class PostgresAgentStateStore implements AgentStateStore {
         : null;
 
       // eslint-disable-next-line no-await-in-loop -- preserve event order in the audit log.
-      await this.#rows<IdRow>(sql`
-        insert into halda.agent_events (
-          user_id,
-          conversation_id,
-          event_type,
-          input,
-          output,
-          occurred_at,
-          metadata
-        )
-        values (
-          ${dbUserId}::uuid,
-          ${conversationId}::uuid,
-          ${event.eventType},
-          ${jsonb(event.input ?? {})},
-          ${jsonb(event.output ?? {})},
-          ${timestamptz(event.createdAt)},
-          ${jsonb({ externalThreadId: event.threadId })}
-        )
-        returning id
-      `);
+      await insertAgentEvent({
+        conversationId,
+        dbUserId,
+        event,
+        rows: (query) => this.#rows(query),
+      });
     }
   }
 

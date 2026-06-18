@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Next by Halda",
-  description: "A text-native student relationship engine for Halda.",
+  title: "Halda Mission Control",
+  description: "A student-first college planning cockpit.",
 };
 
 export default function RootLayout({
@@ -29,7 +29,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <Providers>{children}</Providers>
+        <div className="root flex min-h-screen flex-col">
+          <Providers>{children}</Providers>
+        </div>
       </body>
     </html>
   );

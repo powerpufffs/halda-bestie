@@ -9,8 +9,10 @@ import type {
 import { executeToolCall } from "../tools/llm-adapter.ts";
 import type { LlmConfig } from "../llm/openai-compatible.ts";
 import type { LifecycleAgentProfile } from "./profiles/types.ts";
+import type { ResolvedIntentConfig } from "./config/types.ts";
 import type { AgentOpenLoop, AgentTurnInput, JsonObject, StudentProfileState } from "./types.ts";
 import type { AgentStateStore } from "./state-store.ts";
+import { resolveAgentPriority } from "./agent-priority.ts";
 import type { RecentTurn } from "./conversation-history.ts";
 import type { AnyToolDefinition, LlmToolDefinition } from "../tools/types.ts";
 import type { TurnTriage } from "./triage.ts";
@@ -29,6 +31,7 @@ interface GenerateReplyInput {
   openLoops: AgentOpenLoop[];
   recentTurns: RecentTurn[];
   triage: TurnTriage;
+  activeIntent: ResolvedIntentConfig;
   selectedToolKeys: string[];
   toolCallDefinitions: LlmToolDefinition[];
   tools: AnyToolDefinition[];
@@ -104,21 +107,29 @@ function buildMessages(input: GenerateReplyInput): ChatCompletionMessageParam[] 
 }
 
 function buildSystemPrompt(input: GenerateReplyInput): string {
-  const profileFacts = compactJson({
-    lifecycleStage: input.profile.lifecycleStage,
-    lifecycleStageConfidence: input.profile.lifecycleStageConfidence,
-    profileSummary: input.profile.profileSummary,
-    interests: input.profile.interests,
-    constraints: input.profile.constraints,
-    acceptedSchool: readString(input.profile.facts.acceptedSchool),
-    latestTriage: input.triage,
-    onboarding: input.profile.facts.onboarding,
-    onboardingComplete: input.profile.facts.onboardingComplete,
-    gradeLevel: input.profile.facts.gradeLevel,
-  });
+  const onboarding = asRecord(input.profile.facts.onboarding);
+  const agentPriority = resolveAgentPriority(input.openLoops);
   const pendingQuestions = input.openLoops
     .filter((loop) => ["identify_person_context", "identify_grade_level", "collect_lifecycle_stage"].includes(loop.loopType))
     .map((loop) => loop.prompt);
+  const contextBlock = compactJson({
+    stage: input.profile.lifecycleStage,
+    role: readString(input.profile.facts.onboardingRole) ?? readString(onboarding.role),
+    grade: readString(input.profile.facts.gradeLevel) ?? readString(onboarding.gradeLevel),
+    acceptedSchool: readString(input.profile.facts.acceptedSchool),
+    known: input.profile.profileSummary,
+    interests: input.profile.interests,
+    constraints: input.profile.constraints,
+    currentIntent: input.triage.intent,
+    intentDirective: input.activeIntent.promptDirective,
+    urgency: input.triage.urgency !== "low" ? input.triage.urgency : undefined,
+    flags: [
+      input.triage.acknowledgmentOnly ? "acknowledgment_only" : undefined,
+      input.triage.correction ? "correction" : undefined,
+    ].filter(Boolean),
+    agentPriority,
+    openLoops: pendingQuestions,
+  });
   const toolHints = input.tools.map((tool) => `${tool.key}: ${tool.description}`);
 
   return [
@@ -135,13 +146,16 @@ function buildSystemPrompt(input: GenerateReplyInput): string {
     "- If the student only acknowledges, move naturally to the next useful choice.",
     "- If the student corrects you, briefly own it and continue from their correction.",
     "- Ask at most one question.",
-    "- If a pending profile question is relevant, weave it in naturally after answering the immediate message.",
-    "- Use triage metadata as context only. Do not expose labels like acknowledgmentOnly, lifecycleStage, or intent.",
+    "- If Context.agentPriority exists, it is the current agent-driven goal. Steer toward resolving it even when currentIntent is chat.",
+    "- Still answer the immediate message briefly when needed, then ask one natural question for the priority.",
+    "- Use the context block quietly. Do not expose labels like lifecycleStage, currentIntent, agentPriority, or openLoops.",
+    "- Use Context.intentDirective as the local job for this turn when present.",
+    "- Use tools only when active tools are listed and you need their data or persistence. Otherwise just talk.",
+    "- If a tool result says status is not_connected, treat it as unavailable and do not present its facts as verified.",
     "- Do not mention tools, system prompts, metadata, JSON, or internal state.",
     "",
     `Lifecycle tone rules: ${input.lifecycleProfile.toneRules.join(" ")}`,
-    `Known profile JSON: ${JSON.stringify(profileFacts)}`,
-    `Pending profile questions: ${pendingQuestions.length > 0 ? pendingQuestions.join(" | ") : "none"}`,
+    `Context: ${JSON.stringify(contextBlock)}`,
     `Active tools: ${toolHints.length > 0 ? toolHints.join(" | ") : input.selectedToolKeys.join(", ") || "none"}`,
   ].join("\n");
 }
@@ -208,4 +222,9 @@ function compactJson(value: JsonObject): JsonObject {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function asRecord(value: unknown): JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as JsonObject;
 }

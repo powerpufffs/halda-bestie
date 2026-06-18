@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { searchScorecardInstitutions } from "../data/scorecard-search.ts";
 import { defineTool } from "./types.ts";
 
 export const lifecycleTools = [
@@ -11,7 +12,7 @@ export const lifecycleTools = [
       possibleName: z.string().optional(),
       roleGuess: z.enum(["student", "guardian", "counselor", "institution_staff", "unknown"]).default("unknown"),
       stageGuess: z
-        .enum(["unknown", "sophomore", "junior", "senior", "transfer", "current_college", "gap_year"])
+        .enum(["unknown", "freshman", "sophomore", "junior", "senior", "transfer", "current_college", "gap_year"])
         .default("unknown"),
       interestSignals: z.array(z.string()).default([]),
       urgency: z.enum(["low", "medium", "high"]).default("low"),
@@ -30,7 +31,7 @@ export const lifecycleTools = [
           "Avoid fake teen slang; sound like a helpful student friend.",
         ],
         missingSlots: input.stageGuess === "unknown" ? ["lifecycle_stage"] : [],
-        suggestedStageOptions: ["10th", "11th", "12th", "transfer", "current_college"],
+        suggestedStageOptions: ["9th", "10th", "11th", "12th", "transfer", "current_college"],
         roleGuess: input.roleGuess,
         stageGuess: input.stageGuess,
         interestSignals: input.interestSignals,
@@ -45,7 +46,7 @@ export const lifecycleTools = [
       knownInterests: z.array(z.string()).default([]),
       confidenceLevel: z.enum(["low", "medium", "high", "unknown"]).default("unknown"),
     }),
-    lifecycleStages: ["unknown", "sophomore"],
+    lifecycleStages: ["unknown", "freshman", "sophomore", "junior", "senior", "transfer", "current_college", "gap_year"],
     async execute(input) {
       return {
         quizMode: "single_choice_interest_style",
@@ -62,7 +63,7 @@ export const lifecycleTools = [
       interestArea: z.string().optional(),
       currentCourses: z.array(z.string()).default([]),
     }),
-    lifecycleStages: ["sophomore"],
+    lifecycleStages: ["freshman", "sophomore"],
     async execute(input) {
       return {
         checklist: [
@@ -99,24 +100,32 @@ export const lifecycleTools = [
   }),
   defineTool({
     key: "college_match_search",
-    description: "Find schools that match a student's interests, constraints, and region.",
+    description: "Search imported College Scorecard institutions by name, interest, constraint, or region.",
     inputSchema: z.object({
       interests: z.array(z.string()).default([]),
       region: z.string().optional(),
       constraints: z.array(z.string()).default([]),
       maxResults: z.number().int().min(1).max(10).default(5),
     }),
-    lifecycleStages: ["junior", "senior", "transfer", "gap_year"],
+    lifecycleStages: ["unknown", "freshman", "sophomore", "junior", "senior", "transfer", "current_college", "gap_year"],
     async execute(input) {
+      const query = [...input.interests, ...input.constraints].join(" ").trim() || input.region || "college";
+      const results = await searchScorecardInstitutions({
+        query,
+        state: input.region,
+        maxResults: input.maxResults,
+      });
+
       return {
-        status: "not_connected",
+        status: results.length > 0 ? "ok" : "not_found",
+        source: "College Scorecard",
         query: {
           interests: input.interests,
           region: input.region,
           constraints: input.constraints,
           maxResults: input.maxResults,
         },
-        nextStep: "Wire this tool to College Scorecard and program data before returning factual matches.",
+        results,
       };
     },
   }),
@@ -127,7 +136,7 @@ export const lifecycleTools = [
       schools: z.array(z.string()).default([]),
       applicationStatus: z.string().optional(),
     }),
-    lifecycleStages: ["senior", "gap_year"],
+    lifecycleStages: ["unknown", "junior", "senior", "gap_year"],
     async execute(input) {
       return {
         schools: input.schools,
@@ -144,7 +153,7 @@ export const lifecycleTools = [
       prompt: z.string().optional(),
       feedbackMode: z.enum(["quick", "structure", "voice", "final_polish"]).default("quick"),
     }),
-    lifecycleStages: ["senior", "transfer", "gap_year"],
+    lifecycleStages: ["unknown", "junior", "senior", "transfer", "current_college", "gap_year"],
     async execute(input) {
       return {
         feedbackMode: input.feedbackMode,
@@ -163,7 +172,7 @@ export const lifecycleTools = [
       hasFsaId: z.boolean().optional(),
       parentInvolved: z.boolean().optional(),
     }),
-    lifecycleStages: ["senior", "transfer", "current_college", "gap_year"],
+    lifecycleStages: ["unknown", "freshman", "sophomore", "junior", "senior", "transfer", "current_college", "gap_year"],
     async execute(input) {
       return {
         checklist: [

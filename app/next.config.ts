@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const frontendDir = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   turbopack: {
     root: join(frontendDir, ".."),
   },

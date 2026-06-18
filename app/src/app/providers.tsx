@@ -22,7 +22,9 @@ export function Providers({ children }: { children: ReactNode }) {
     <NuqsAdapter>
       <QueryClientProvider client={queryClient}>
         {children}
-        <ReactQueryDevtools initialIsOpen={false} />
+        {process.env.NEXT_PUBLIC_QUERY_DEVTOOLS === "true" ? (
+          <ReactQueryDevtools initialIsOpen={false} />
+        ) : null}
       </QueryClientProvider>
     </NuqsAdapter>
   );

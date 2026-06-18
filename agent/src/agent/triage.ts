@@ -2,15 +2,13 @@ import { inferLifecycleStage } from "./lifecycle.ts";
 import type { LifecycleStage, StudentProfileState } from "./types.ts";
 
 export type TriageIntent =
-  | "acknowledgment"
   | "application"
   | "career"
+  | "chat"
   | "college_search"
+  | "email"
   | "financial_aid"
-  | "off_topic"
-  | "small_talk"
-  | "transfer"
-  | "unknown";
+  | "transfer";
 
 export type TriageRole =
   | "student"
@@ -46,15 +44,36 @@ const interestPatterns: Array<{ interest: string; pattern: RegExp }> = [
   { interest: "healthcare", pattern: /\bhealthcare\b/i },
 ];
 
-const intentPatterns: Array<{ intent: TriageIntent; patterns: RegExp[] }> = [
-  { intent: "acknowledgment", patterns: [/^(bet|ok|okay|k|cool|nice|word|gotcha|got it|sounds good|alright|all right|thanks|thank you|ty)\b[.!?]*$/i] },
-  { intent: "small_talk", patterns: [/^(hi|hey|hello|yo|sup|what'?s up|wyd)\b/i, /\bhow are you\b/i, /\bwho are you\b/i] },
-  { intent: "off_topic", patterns: [/\btell me a joke\b/i, /\bfavorite\b/i, /\bmovie\b/i, /\bmusic\b/i, /\bgame\b/i, /\bsports?\b/i, /\bweather\b/i, /\bwhat should i eat\b/i] },
+const actionIntentPatterns: Array<{ intent: Exclude<TriageIntent, "chat">; patterns: RegExp[] }> = [
+  {
+    intent: "email",
+    patterns: [
+      /\b(email|emails|inbox|mail)\b/i,
+      /\bdid i get\b.{0,80}\b(from|about)\b/i,
+      /\banything\b.{0,80}\b(from|about)\b/i,
+    ],
+  },
   { intent: "transfer", patterns: [/\btransfer\b/i, /\bcredits?\b/i, /\bcommunity college\b/i] },
-  { intent: "financial_aid", patterns: [/\bscholarship/i, /\bfafsa\b/i, /\bfinancial aid\b/i, /\bcost\b/i, /\baid\b/i, /\btuition\b/i] },
-  { intent: "application", patterns: [/\bapply\b/i, /\bapplication\b/i, /\bessay\b/i, /\bdeadline\b/i, /\baccepted\s+(to|into|at)\b/i, /\badmitted\s+(to|into|at)\b/i, /\bgot\s+(accepted|into)\b/i] },
+  {
+    intent: "financial_aid",
+    patterns: [/\bscholarship/i, /\bfafsa\b/i, /\bfinancial aid\b/i, /\bnet price\b/i, /\bcost\b/i, /\baid\b/i, /\btuition\b/i],
+  },
+  {
+    intent: "application",
+    patterns: [/\bapply\b/i, /\bapplication\b/i, /\bessay\b/i, /\bdeadline\b/i, /\bcommon app\b/i, /\badmissions requirements?\b/i],
+  },
+  {
+    intent: "college_search",
+    patterns: [
+      /\bcollege list\b/i,
+      /\bschool list\b/i,
+      /\bdoes\b.{1,60}\b(have|offer)\b/i,
+      /\b(find|search|compare|recommend|look at)\b.{0,40}\b(colleges?|schools?|universit(?:y|ies))\b/i,
+      /\b(colleges?|schools?|universit(?:y|ies))\b.{0,40}\b(for|near|with)\b/i,
+      /\buvu\b/i,
+    ],
+  },
   { intent: "career", patterns: [/\bcareer\b/i, /\bmajor\b/i, /\bjob\b/i, /\bwant to do\b/i, /\bnursing\b/i, /\bhealthcare\b/i, /\bcomputer science\b/i, /\bcoding\b/i, /\bbusiness\b/i] },
-  { intent: "college_search", patterns: [/\bschool\b/i, /\bcollege\b/i, /\buniversity\b/i, /\buvu\b/i] },
 ];
 
 export function triageTurn(text: string, profile: StudentProfileState): TurnTriage {
@@ -101,7 +120,7 @@ export function triageTurn(text: string, profile: StudentProfileState): TurnTria
 }
 
 function detectIntent(text: string): TriageIntent {
-  return intentPatterns.find((candidate) => candidate.patterns.some((pattern) => pattern.test(text)))?.intent ?? "unknown";
+  return actionIntentPatterns.find((candidate) => candidate.patterns.some((pattern) => pattern.test(text)))?.intent ?? "chat";
 }
 
 function detectRole(text: string): TriageRole | undefined {
@@ -109,7 +128,7 @@ function detectRole(text: string): TriageRole | undefined {
   if (/\b(parent|guardian|mom|dad)\b/.test(text) || /\bmy (son|daughter|kid|child)\b/.test(text)) return "supporter";
   if (/\b(counselor|advisor|teacher)\b/.test(text)) return "counselor";
   if (/\b(admissions|staff|recruiter|institution)\b/.test(text)) return "institution_staff";
-  if (/\b(i am|i['\u2019]m|im)\b/.test(text) || /\b(student|sophomore|junior|senior|transfer)\b/.test(text)) return "student";
+  if (/\b(i am|i['\u2019]m|im)\b/.test(text) || /\b(student|freshman|sophomore|junior|senior|transfer)\b/.test(text)) return "student";
   return undefined;
 }
 

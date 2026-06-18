@@ -1,17 +1,20 @@
 import type { AgentChannel, LifecycleStage } from "./types.ts";
 import type { LifecycleAgentProfile } from "./profiles/types.ts";
+import type { TriageIntent } from "./triage.ts";
+import type { IntentConfig, ResolvedIntentConfig, ToolKey } from "./config/types.ts";
 import { toLlmToolDefinitions } from "../tools/llm-adapter.ts";
-import { globalToolKeys, resolveTools } from "../tools/registry.ts";
+import { resolveTools } from "../tools/registry.ts";
 
 interface ToolBundleInput {
   channel: AgentChannel;
   lifecycleStage: LifecycleStage;
   profile: LifecycleAgentProfile;
-  currentIntent?: string;
+  currentIntent: TriageIntent;
 }
 
 const channelToolKeys: Partial<Record<AgentChannel, string[]>> = {
-  gmail: ["send_email_summary"],
+  email: [],
+  gmail: [],
   imessage: [],
   sms: [],
   website: [],
@@ -19,29 +22,56 @@ const channelToolKeys: Partial<Record<AgentChannel, string[]>> = {
   terminal: [],
 };
 
-const intentToolKeys: Record<string, string[]> = {
-  application: ["application_deadline_tracker", "essay_feedback"],
-  career: ["career_interest_quiz"],
-  college_search: ["lookup_college", "college_match_search"],
-  financial_aid: ["fafsa_checklist"],
-  transfer: ["credit_transfer_estimator", "major_requirement_compare"],
-};
-
 export function assembleToolBundle(input: ToolBundleInput) {
-  const selectedKeys = [
-    ...globalToolKeys,
-    ...input.profile.toolKeys,
-    ...(input.currentIntent ? intentToolKeys[input.currentIntent] ?? [] : []),
-    ...(channelToolKeys[input.channel] ?? []),
-  ];
+  const intent = resolveIntentConfig(input.profile, input.currentIntent);
+  const selectedKeys = intent.name === "chat"
+    ? []
+    : [
+        ...input.profile.alwaysOnTools,
+        ...intent.tools,
+        ...(channelToolKeys[input.channel] ?? []),
+      ];
 
-  const tools = resolveTools(selectedKeys).filter(
+  const resolvedTools = resolveTools(selectedKeys);
+  assertAllToolKeysResolved(selectedKeys, resolvedTools);
+
+  const tools = resolvedTools.filter(
     (tool) => !tool.lifecycleStages || tool.lifecycleStages.includes(input.lifecycleStage),
   );
+  const toolCallDefinitions = toLlmToolDefinitions(tools);
 
   return {
     selectedToolKeys: tools.map((tool) => tool.key),
-    toolCallDefinitions: toLlmToolDefinitions(tools),
+    toolCallDefinitions,
     tools,
+    activeIntent: {
+      ...intent,
+      toolKeys: tools.map((tool) => tool.key as ToolKey),
+      tools,
+      toolCallDefinitions,
+    } satisfies ResolvedIntentConfig,
   };
+}
+
+function assertAllToolKeysResolved(
+  selectedKeys: readonly string[],
+  tools: ReturnType<typeof resolveTools>,
+): void {
+  const resolvedKeys = new Set(tools.map((tool) => tool.key));
+  const missingKeys = [...new Set(selectedKeys)].filter((key) => !resolvedKeys.has(key));
+  if (missingKeys.length === 0) return;
+
+  throw new Error(`Agent config references unknown tool key(s): ${missingKeys.join(", ")}`);
+}
+
+function resolveIntentConfig(profile: LifecycleAgentProfile, intent: TriageIntent): IntentConfig {
+  return (
+    profile.possibleIntents.find((candidate) => candidate.name === intent) ??
+    profile.possibleIntents.find((candidate) => candidate.name === "chat") ??
+    {
+      name: "chat",
+      tools: [],
+      triggerCondition: "default",
+    }
+  );
 }

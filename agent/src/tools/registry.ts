@@ -1,8 +1,9 @@
+import { emailTools } from "./email.ts";
 import { globalTools } from "./global.ts";
 import { lifecycleTools } from "./lifecycle.ts";
 import type { AnyToolDefinition } from "./types.ts";
 
-const allTools = [...globalTools, ...lifecycleTools] satisfies AnyToolDefinition[];
+const allTools = [...globalTools, ...lifecycleTools, ...emailTools] satisfies AnyToolDefinition[];
 
 export const toolRegistry: Map<string, AnyToolDefinition> = new Map(allTools.map((tool) => [tool.key, tool]));
 

@@ -16,6 +16,7 @@
     "dev:app": "bun run --cwd app dev",
     "lint": "oxlint .",
     "lint:app": "bun run --cwd app lint",
+    "import:scorecard": "bun run --cwd agent import:scorecard",
     "repair:imessage-native": "npm rebuild better-sqlite3",
     "start:agent:terminal": "bun run --cwd agent start:terminal",
     "test:onboarding": "bun run --cwd agent test:onboarding",

@@ -1,0 +1,11 @@
+/node_modules
+/.next
+/out
+.env
+
+# Unrelated nested project — keep it out of this repo
+/halda-bestie
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store

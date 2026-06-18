@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "collegepath",
+      "runtimeExecutable": "/Users/ricktoma/.local/node/bin/node",
+      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
+      "name": "halda-app",
+      "runtimeExecutable": "/Users/ricktoma/.bun/bin/bun",
+      "runtimeArgs": ["run", "--cwd", "/Users/ricktoma/Claude storage/halda-bestie/app", "dev"],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}

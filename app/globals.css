@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ------------------------------------------------------------------ */
+/* Editor highlight + comment anchor styling                          */
+/* ------------------------------------------------------------------ */
+@layer components {
+  /* Transient decoration when an advice anchor is focused from the sidebar. */
+  .active-comment-range {
+    background-color: rgb(253 230 138); /* amber-200 */
+    box-shadow: 0 0 0 2px rgb(252 211 77);
+    border-radius: 2px;
+  }
+
+  /* Persistent Grammarly-style underlines, color-coded by suggestion type. */
+  .suggestion-underline-grammar {
+    text-decoration: underline wavy rgb(34 197 94); /* green-500 — grammar */
+    text-decoration-skip-ink: none;
+    text-underline-offset: 3px;
+  }
+  .suggestion-underline-content {
+    text-decoration: underline wavy rgb(234 179 8); /* yellow-500 — structure/tone */
+    text-decoration-skip-ink: none;
+    text-underline-offset: 3px;
+  }
+
+  /* Transient decoration when an AI suggestion is focused from the sidebar. */
+  .active-suggestion-range {
+    background-color: rgb(209 250 229); /* emerald-100 */
+    box-shadow: 0 0 0 2px rgb(52 211 153); /* emerald-400 */
+    border-radius: 2px;
+    animation: suggestion-pulse 1.2s ease-in-out;
+  }
+
+  @keyframes suggestion-pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgb(52 211 153 / 0.6);
+    }
+    70% {
+      box-shadow: 0 0 0 6px rgb(52 211 153 / 0);
+    }
+    100% {
+      box-shadow: 0 0 0 2px rgb(52 211 153);
+    }
+  }
+}
+
+/* Make the ProseMirror editing surface feel like a document. */
+.ProseMirror {
+  caret-color: rgb(37 99 235);
+}
+.dark .ProseMirror {
+  caret-color: rgb(129 140 248); /* indigo-400 */
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgb(148 163 184);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.dark .ProseMirror p.is-editor-empty:first-child::before {
+  color: rgb(100 116 139); /* slate-500 */
+}
+
+/* Keep the focus highlights readable on a dark document surface. */
+.dark .active-comment-range {
+  background-color: rgb(120 53 15); /* amber-900 */
+  box-shadow: 0 0 0 2px rgb(180 83 9); /* amber-700 */
+  color: rgb(254 243 199);
+}
+.dark .active-suggestion-range {
+  background-color: rgb(6 78 59); /* emerald-900 */
+  box-shadow: 0 0 0 2px rgb(16 185 129); /* emerald-500 */
+  color: rgb(209 250 229);
+}

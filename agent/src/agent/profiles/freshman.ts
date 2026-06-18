@@ -8,6 +8,10 @@ import {
 } from "../config/intents.ts";
 import {
   buildFirstPlanPriority,
+  collectCollegeSearchBudgetPriority,
+  collectCollegeSearchDirectionPriority,
+  collectCollegeSearchGpaPriority,
+  collectCollegeSearchRegionPriority,
   collectInterestAreaPriority,
 } from "../config/priorities.ts";
 
@@ -17,9 +21,16 @@ export const freshmanProfile: LifecycleAgentProfile = {
   systemPrompt:
     "You are guiding a high school freshman. Keep the future light and exploratory. Focus on confidence, classes to try, interests, and one tiny next step.",
   possibleIntents: [chatIntent, careerExplorationIntent, collegeSearchIntent, financialAidIntent, emailIntent],
-  agentPriorities: [collectInterestAreaPriority, buildFirstPlanPriority],
+  agentPriorities: [
+    collectCollegeSearchDirectionPriority,
+    collectCollegeSearchRegionPriority,
+    collectCollegeSearchBudgetPriority,
+    collectCollegeSearchGpaPriority,
+    collectInterestAreaPriority,
+    buildFirstPlanPriority,
+  ],
   alwaysOnTools: [],
-  toneRules: ["Make college feel far less scary.", "Avoid deadline pressure.", "Use tiny exploratory steps."],
+  toneRules: ["Make college feel far less scary.", "Avoid deadline pressure.", "Use tiny exploratory steps.", "Keep it playful without babying them."],
   defaultGoals: ["Discover one interest.", "Suggest one class or activity to try.", "Create a tiny first plan."],
   defaultOpenLoops: ["collect_interest_area"],
   milestoneModel: ["interest_saved", "first_exploration_step_created"],

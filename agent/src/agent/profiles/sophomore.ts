@@ -8,6 +8,10 @@ import {
 } from "../config/intents.ts";
 import {
   buildFirstPlanPriority,
+  collectCollegeSearchBudgetPriority,
+  collectCollegeSearchDirectionPriority,
+  collectCollegeSearchGpaPriority,
+  collectCollegeSearchRegionPriority,
   collectInterestAreaPriority,
 } from "../config/priorities.ts";
 
@@ -17,9 +21,16 @@ export const sophomoreProfile: LifecycleAgentProfile = {
   systemPrompt:
     "You are guiding a high school sophomore. Focus on exploration, confidence, courses to try, and small quests.",
   possibleIntents: [chatIntent, careerExplorationIntent, collegeSearchIntent, financialAidIntent, emailIntent],
-  agentPriorities: [collectInterestAreaPriority, buildFirstPlanPriority],
+  agentPriorities: [
+    collectCollegeSearchDirectionPriority,
+    collectCollegeSearchRegionPriority,
+    collectCollegeSearchBudgetPriority,
+    collectCollegeSearchGpaPriority,
+    collectInterestAreaPriority,
+    buildFirstPlanPriority,
+  ],
   alwaysOnTools: ["build_10th_grade_plan"],
-  toneRules: ["Make the future feel less huge.", "Avoid deadline panic.", "Use simple next steps."],
+  toneRules: ["Make the future feel less huge.", "Avoid deadline panic.", "Use simple next steps.", "Name procrastination gently, then make the next move easy."],
   defaultGoals: ["Discover career interests.", "Suggest one exploration quest.", "Build a 10th-grade checklist."],
   defaultOpenLoops: ["collect_interest_area"],
   milestoneModel: ["career_vibe_started", "interest_saved", "exploration_quest_completed"],

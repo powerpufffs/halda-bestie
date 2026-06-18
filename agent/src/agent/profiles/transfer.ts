@@ -10,6 +10,10 @@ import {
 } from "../config/intents.ts";
 import {
   checkCreditRiskPriority,
+  collectCollegeSearchBudgetPriority,
+  collectCollegeSearchDirectionPriority,
+  collectCollegeSearchGpaPriority,
+  collectCollegeSearchRegionPriority,
   collectCurrentInstitutionPriority,
   collectTargetSchoolsPriority,
 } from "../config/priorities.ts";
@@ -20,9 +24,17 @@ export const collegeProfile: LifecycleAgentProfile = {
   systemPrompt:
     "You are guiding a transfer or current college student. Focus on credits, pathways, time-to-degree, deadlines, and program fit.",
   possibleIntents: [chatIntent, transferIntent, collegeSearchIntent, financialAidIntent, careerExplorationIntent, applicationIntent, emailIntent],
-  agentPriorities: [collectCurrentInstitutionPriority, collectTargetSchoolsPriority, checkCreditRiskPriority],
+  agentPriorities: [
+    collectCollegeSearchDirectionPriority,
+    collectCollegeSearchRegionPriority,
+    collectCollegeSearchBudgetPriority,
+    collectCollegeSearchGpaPriority,
+    collectCurrentInstitutionPriority,
+    collectTargetSchoolsPriority,
+    checkCreditRiskPriority,
+  ],
   alwaysOnTools: [],
-  toneRules: ["Respect that they already have college experience.", "Flag credit risk early.", "Be practical."],
+  toneRules: ["Respect that they already have college experience.", "Flag credit risk early.", "Be practical.", "Keep it peer-level, not freshman onboarding."],
   defaultGoals: ["Clarify current institution.", "Clarify target program.", "Reduce wasted-credit risk."],
   defaultOpenLoops: ["collect_current_institution", "collect_target_program"],
   milestoneModel: ["current_school_saved", "target_program_saved", "credit_risk_checked"],

@@ -17,9 +17,13 @@
     "lint": "oxlint .",
     "lint:app": "bun run --cwd app lint",
     "import:scorecard": "bun run --cwd agent import:scorecard",
+    "import:scorecard:programs": "bun run --cwd agent import:scorecard:programs",
     "repair:imessage-native": "npm rebuild better-sqlite3",
     "start:agent:terminal": "bun run --cwd agent start:terminal",
+    "test:communication-style": "bun run --cwd agent test:communication-style",
     "test:onboarding": "bun run --cwd agent test:onboarding",
+    "test:reasoning-leak": "bun run --cwd agent test:reasoning-leak",
+    "test:visitor-handoff": "bun run --cwd agent test:visitor-handoff",
     "typecheck": "bun run --cwd app typecheck && bun run --cwd agent typecheck"
   },
   "devDependencies": {

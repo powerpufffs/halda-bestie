@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { rows, sql } from "@/lib/db";
 import { syncRecentMessagesForAccount } from "@/lib/email-ingestion";
+import { readWebSession } from "@/lib/lightweight-auth";
 import { ensureUserForExternalId, readExternalUserId } from "@/lib/user-identity";
 
 export const runtime = "nodejs";
@@ -15,8 +16,9 @@ interface AccountRow {
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const externalUserId = readExternalUserId(readFormString(formData.get("userId")));
-    const userId = await ensureUserForExternalId(externalUserId);
+    const session = await readWebSession();
+    const externalUserId = session?.externalUserId ?? readExternalUserId(readFormString(formData.get("userId")));
+    const userId = session?.userId ?? await ensureUserForExternalId(externalUserId);
     const accounts = await rows<AccountRow>(sql`
       select id,
              user_id,
@@ -34,8 +36,8 @@ export async function POST(request: NextRequest) {
     );
     const synced = syncedCounts.reduce((total, count) => total + count, 0);
 
-    const url = new URL("/", request.nextUrl.origin);
-    url.searchParams.set("userId", externalUserId);
+    const url = new URL(session ? "/join" : "/", request.nextUrl.origin);
+    if (!session) url.searchParams.set("userId", externalUserId);
     url.searchParams.set("synced", String(synced));
 
     return NextResponse.redirect(url);

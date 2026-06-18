@@ -16,12 +16,15 @@ import {
 } from "./postgres-state-codec.ts";
 import type {
   AgentEvent,
+  AgentConversationMessage,
   AgentMessageRecord,
   AgentOpenLoop,
   ConversationState,
   StudentProfileState,
 } from "./types.ts";
 import type { AgentStateStore } from "./state-store.ts";
+import { listRecentConversationMessages } from "./postgres-state-history.ts";
+import { userMetadataFromProfile, userTypeFromProfile } from "./postgres-state-user-metadata.ts";
 import { insertAgentEvent, insertMessageRecord } from "./postgres-state-writes.ts";
 
 export class PostgresAgentStateStore implements AgentStateStore {
@@ -298,13 +301,24 @@ export class PostgresAgentStateStore implements AgentStateStore {
     `);
   }
 
+  async listRecentMessages(userId: string, limit = 12): Promise<AgentConversationMessage[]> {
+    const dbUserId = await this.#ensureUser(userId);
+    return listRecentConversationMessages({
+      dbUserId,
+      limit,
+      rows: (query) => this.#rows(query),
+    });
+  }
+
   async logMessage(message: AgentMessageRecord): Promise<void> {
     const participant = await this.#ensureUserIdentity(message.userId);
+    const messagePlatformId = await this.#ensurePlatform(message.channel);
     const { conversationId } = await this.#ensureConversation(message.userId, message.threadId);
 
     await insertMessageRecord({
       conversationId,
       message,
+      messagePlatformId,
       participant,
       rows: (query) => this.#rows(query),
     });
@@ -512,38 +526,4 @@ export class PostgresAgentStateStore implements AgentStateStore {
   async #rows<T>(query: SQL): Promise<T[]> {
     return (await this.#db.execute(query)) as unknown as T[];
   }
-}
-
-function userMetadataFromProfile(profile: StudentProfileState): Record<string, unknown> {
-  const onboarding = asRecord(profile.facts.onboarding);
-  const complete = profile.facts.onboardingComplete === true || onboarding.complete === true;
-
-  return {
-    accountStatus: complete ? "identified" : "anonymous",
-    anonymous: !complete,
-    lifecycleStage: profile.lifecycleStage,
-    agentProfileKey: profile.agentProfileKey,
-    onboardingComplete: complete,
-    onboardingRole: stringValue(profile.facts.onboardingRole) ?? stringValue(onboarding.role),
-    collegeIntent: stringValue(profile.facts.collegeIntent) ?? stringValue(onboarding.collegeIntent),
-    gradeLevel: stringValue(profile.facts.gradeLevel) ?? stringValue(onboarding.gradeLevel),
-    profileUpdatedAt: new Date().toISOString(),
-  };
-}
-
-function userTypeFromProfile(profile: StudentProfileState): string {
-  const onboardingRole = stringValue(profile.facts.onboardingRole);
-  if (onboardingRole === "supporter") return "guardian";
-  if (onboardingRole === "counselor") return "counselor";
-  if (onboardingRole === "institution_staff") return "institution_staff";
-  return "student";
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

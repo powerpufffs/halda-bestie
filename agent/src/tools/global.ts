@@ -4,8 +4,44 @@ import { lookupScorecardInstitution } from "../data/scorecard-search.ts";
 import { defineTool } from "./types.ts";
 
 const jsonRecordSchema = z.record(z.string(), z.unknown());
+const communicationStyleSchema = z.object({
+  slangLevel: z.enum(["low", "medium", "high"]).optional(),
+  roastLevel: z.enum(["none", "light"]).optional(),
+  emojiLevel: z.enum(["none", "sparse"]).optional(),
+  detailLevel: z.enum(["brief", "balanced", "detailed"]).optional(),
+  directness: z.enum(["balanced", "high"]).optional(),
+  supportLevel: z.enum(["normal", "gentle"]).optional(),
+  notes: z.string().max(240).optional(),
+});
 
 export const globalTools = [
+  defineTool({
+    key: "update_communication_style",
+    description:
+      "Persist how the student wants Halda to talk. Use only when the student asks to change tone, slang, emoji use, roasting, directness, detail level, or gentleness.",
+    inputSchema: communicationStyleSchema,
+    async execute(input, context) {
+      const profile = await context.store.getProfile(context.userId);
+      const updates = compactRecord(input as Record<string, unknown>);
+      const communicationStyle = {
+        ...profile.communicationStyle,
+        ...updates,
+        userSteerable: true,
+        source: "update_communication_style",
+        updatedAt: context.timestamp.toISOString(),
+      };
+
+      await context.store.saveProfile({
+        ...profile,
+        communicationStyle,
+      });
+
+      return {
+        updated: true,
+        communicationStyle,
+      };
+    },
+  }),
   defineTool({
     key: "save_profile_fact",
     description: "Persist a stable fact, interest, preference, or constraint about the student.",
@@ -49,7 +85,6 @@ export const globalTools = [
       facts: jsonRecordSchema.default({}),
       preferences: jsonRecordSchema.default({}),
       milestones: jsonRecordSchema.default({}),
-      communicationStyle: jsonRecordSchema.default({}),
       interests: z.array(z.string()).default([]),
       constraints: z.array(z.string()).default([]),
       tags: z.array(z.string()).default([]),
@@ -62,7 +97,6 @@ export const globalTools = [
         facts: { ...profile.facts, ...input.facts },
         preferences: { ...profile.preferences, ...input.preferences },
         milestones: { ...profile.milestones, ...input.milestones },
-        communicationStyle: { ...profile.communicationStyle, ...input.communicationStyle },
         interests: [...new Set([...profile.interests, ...input.interests])],
         constraints: [...new Set([...profile.constraints, ...input.constraints])],
         tags: [...new Set([...profile.tags, ...input.tags])],
@@ -210,3 +244,13 @@ export const globalTools = [
     },
   }),
 ];
+
+function compactRecord(input: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => {
+      if (value === undefined || value === null) return false;
+      if (typeof value === "string") return value.trim().length > 0;
+      return true;
+    }),
+  );
+}

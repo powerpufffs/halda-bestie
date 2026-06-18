@@ -22,13 +22,13 @@ function cx(...classes: Array<string | false | null | undefined>) {
 
 const buttonTone: Record<ButtonTone, string> = {
   primary:
-    "border-transparent bg-[#193247] text-white shadow-[0_10px_24px_rgba(25,50,71,0.16)] hover:bg-[#102739]",
+    "border-[#17202a] bg-[#17202a] text-[#fffaf0] shadow-[4px_4px_0_#17202a] hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#17202a]",
   secondary:
-    "border-transparent bg-[#e7f4f1] text-[#113c3b] hover:bg-[#d7eee9]",
+    "border-[#17202a] bg-[#d7eee9] text-[#17202a] shadow-[3px_3px_0_#17202a] hover:-translate-y-0.5",
   quiet:
-    "border-transparent bg-transparent text-[#314456] hover:bg-[#edf3f3]",
+    "border-transparent bg-transparent text-[#314456] hover:bg-[#ebe5da]",
   outline:
-    "border-[#cad8dc] bg-white text-[#193247] hover:border-[#9db6bd] hover:bg-[#f7fbfb]",
+    "border-[#17202a] bg-[#fffaf0] text-[#17202a] shadow-[3px_3px_0_#17202a] hover:-translate-y-0.5 hover:bg-[#f4efdf]",
 };
 
 const buttonSize: Record<ButtonSize, string> = {
@@ -45,7 +45,7 @@ export function HaldaButton({
   return (
     <Button
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-md border font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[#2a8c84] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 rounded-[6px] border-2 font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#2a8c84] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         buttonTone[tone],
         buttonSize[size],
         className,
@@ -75,10 +75,10 @@ export function HaldaTabs({
 
   return (
     <Tabs.Root className={cx("w-full", className)} defaultValue={firstValue}>
-      <Tabs.List className="relative grid grid-cols-3 gap-1 rounded-lg border border-[#d9e4e6] bg-[#edf4f4] p-1">
+      <Tabs.List className="relative grid grid-cols-3 gap-1 rounded-[6px] border-2 border-[#17202a] bg-[#ded8cc] p-1">
         {items.map((item) => (
           <Tabs.Tab
-            className="relative z-10 min-h-11 rounded-md px-2 py-2 text-left text-sm font-medium text-[#536576] outline-none transition hover:bg-white/70 focus-visible:ring-2 focus-visible:ring-[#2a8c84] data-[selected]:bg-white data-[selected]:text-[#172637] data-[selected]:shadow-sm"
+            className="relative z-10 min-h-11 rounded-[4px] border-2 border-transparent px-2 py-2 text-left text-sm font-semibold text-[#536576] outline-none transition hover:bg-[#fffaf0]/70 focus-visible:ring-2 focus-visible:ring-[#2a8c84] data-[selected]:border-[#17202a] data-[selected]:bg-[#fffaf0] data-[selected]:text-[#17202a] data-[selected]:shadow-[2px_2px_0_#17202a]"
             key={item.value}
             value={item.value}
           >
@@ -126,13 +126,13 @@ export function HaldaProgress({
       max={max}
       value={clamped}
     >
-      <div className="flex items-center justify-between gap-3 text-xs text-[#607283]">
+      <div className="flex items-center justify-between gap-3 text-xs text-[#596673]">
         <Progress.Label className="font-medium">{label}</Progress.Label>
-        <Progress.Value className="font-semibold text-[#193247]" />
+        <Progress.Value className="font-bold text-[#17202a]" />
       </div>
-      <Progress.Track className="h-2 overflow-hidden rounded-full bg-[#dbe8e8]">
+      <Progress.Track className="h-3 overflow-hidden rounded-[3px] border-2 border-[#17202a] bg-[#d8d2c6]">
         <Progress.Indicator
-          className="block h-full rounded-full bg-[#2a8c84] transition-[width] duration-500 ease-out"
+          className="block h-full bg-[#2a8c84] transition-[width] duration-500 ease-out"
           style={{ width: `${percent}%` }}
         />
       </Progress.Track>
@@ -150,14 +150,14 @@ export function HaldaTooltip({
   return (
     <Tooltip.Provider closeDelay={80} delay={250}>
       <Tooltip.Root>
-        <Tooltip.Trigger className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#d9e4e6] bg-white text-xs font-semibold text-[#607283] outline-none transition hover:border-[#9db6bd] hover:text-[#193247] focus-visible:ring-2 focus-visible:ring-[#2a8c84]">
+        <Tooltip.Trigger className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border-2 border-[#17202a] bg-[#fffaf0] text-xs font-bold text-[#17202a] outline-none transition hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-[#2a8c84]">
           {children}
         </Tooltip.Trigger>
         <Tooltip.Portal>
           <Tooltip.Positioner side="top" sideOffset={8}>
-            <Tooltip.Popup className="max-w-64 rounded-md bg-[#172637] px-3 py-2 text-xs leading-relaxed text-white shadow-xl">
+            <Tooltip.Popup className="max-w-64 rounded-[6px] border-2 border-[#17202a] bg-[#fffaf0] px-3 py-2 text-xs leading-relaxed text-[#17202a] shadow-[4px_4px_0_#17202a]">
               {label}
-              <Tooltip.Arrow className="fill-[#172637]" />
+              <Tooltip.Arrow className="fill-[#17202a]" />
             </Tooltip.Popup>
           </Tooltip.Positioner>
         </Tooltip.Portal>

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { readWebSession } from "@/lib/lightweight-auth";
 import { createNylasAuthUrl } from "@/lib/nylas";
 import { createOAuthState } from "@/lib/oauth-state";
 import { ensureUserForExternalId, readExternalUserId } from "@/lib/user-identity";
@@ -8,7 +9,8 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     const search = request.nextUrl.searchParams;
-    const externalUserId = readExternalUserId(search.get("userId"));
+    const session = await readWebSession();
+    const externalUserId = session?.externalUserId ?? readExternalUserId(search.get("userId"));
     await ensureUserForExternalId(externalUserId);
 
     const state = createOAuthState(externalUserId);

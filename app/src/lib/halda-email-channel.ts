@@ -10,6 +10,7 @@ import {
   saveAndInterpretNylasMessageForUser,
   upsertConnectedEmailAccount,
 } from "./email-ingestion";
+import { resolveEmailIdentityGate } from "./email-identity-gate";
 import { readAppEnv } from "./env";
 import {
   getNylasMessage,
@@ -55,13 +56,69 @@ export async function processHaldaInboxWebhook(payload: Record<string, unknown>)
   });
 
   const runtime = getAgentRuntime();
+  const threadId = emailThreadId(grantId, message);
+  const timestamp = message.date ? new Date(message.date * 1000) : new Date();
+  const gate = await resolveEmailIdentityGate({
+    env,
+    userId: studentUserId,
+    senderEmail,
+    threadId,
+  });
+  if (gate.required && gate.reply) {
+    await runtime.store.logMessage({
+      channel: "email",
+      userId: `email:${senderEmail}`,
+      threadId,
+      role: "user",
+      body: messageTextForAgent(message),
+      status: "received",
+      externalMessageId: message.id,
+      metadata: {
+        policy: "identity_gate",
+        gate: "sms_handoff",
+      },
+      occurredAt: timestamp,
+      processedAt: new Date(),
+    });
+
+    await sendNylasMessage({
+      grantId,
+      to: [{ email: senderEmail, name: sender?.name }],
+      subject: replySubject(message.subject),
+      body: gate.reply,
+      replyToMessageId: message.id,
+      metadata: {
+        source: "halda_email_identity_gate",
+        userId: studentUserId,
+      },
+    });
+
+    await runtime.store.logMessage({
+      channel: "email",
+      userId: `email:${senderEmail}`,
+      threadId,
+      role: "assistant",
+      body: gate.reply,
+      status: "sent",
+      metadata: {
+        policy: "identity_gate",
+        gate: "sms_handoff",
+        codeIssued: Boolean(gate.code),
+      },
+      occurredAt: new Date(),
+      processedAt: new Date(),
+    });
+
+    return true;
+  }
+
   const result = await handleAgentTurn(
     {
       channel: "email",
       userId: `email:${senderEmail}`,
-      threadId: emailThreadId(grantId, message),
+      threadId,
       text: messageTextForAgent(message),
-      timestamp: message.date ? new Date(message.date * 1000) : new Date(),
+      timestamp,
       externalMessageId: message.id,
     },
     runtime.store,

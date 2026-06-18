@@ -2,11 +2,13 @@ import { getLifecycleProfile } from "./profiles/index.ts";
 import { assembleToolBundle } from "./tool-bundles.ts";
 import type {
   AgentEvent,
+  AgentOpenLoop,
   AgentTurnInput,
   AgentTurnResult,
   ConversationState,
   StudentProfileState,
 } from "./types.ts";
+import { updateCollegeSearchFacts } from "./college-search-memory.ts";
 import { resolveAgentPriority, syncConfiguredAgentPriorities } from "./agent-priority.ts";
 import { appendRecentTurn, readRecentTurns } from "./conversation-history.ts";
 import { generateReply, type LlmRuntime } from "./generation.ts";
@@ -14,6 +16,11 @@ import { advanceOnboarding } from "./onboarding.ts";
 import { buildEmergencyFallbackReply } from "./reply.ts";
 import { type AgentStateStore, setLifecycleStage } from "./state-store.ts";
 import { triageTurn, type TurnTriage } from "./triage.ts";
+import {
+  buildWebsiteHandoff,
+  markWebsiteHandoffSent,
+  type WebsiteHandoff,
+} from "./website-handoff.ts";
 
 interface HandleAgentTurnOptions {
   llmRuntime?: LlmRuntime;
@@ -26,10 +33,16 @@ export async function handleAgentTurn(
 ): Promise<AgentTurnResult> {
   let profile = await store.getProfile(input.userId);
   let conversation = await store.getConversationState(input.userId, input.threadId);
+  const recentMessages = await store.listRecentMessages(input.userId, 14);
+  const openLoopsBeforeTurn = await store.listOpenLoops(input.userId);
   const recentTurns = readRecentTurns(conversation);
   const events: AgentEvent[] = [];
 
-  const triage = triageTurn(input.text, profile);
+  const triage = await triageTurn(input.text, profile, {
+    runtime: options.llmRuntime,
+    recentMessages,
+    openLoops: openLoopsBeforeTurn,
+  });
   await logInboundMessage(input, store, triage);
   profile = applyLifecycleTriage(profile, input, triage, events);
 
@@ -37,7 +50,7 @@ export async function handleAgentTurn(
     turn: input,
     store,
     profile,
-    openLoops: await store.listOpenLoops(input.userId),
+    openLoops: openLoopsBeforeTurn,
     triage,
   });
   profile = onboarding.profile;
@@ -50,7 +63,7 @@ export async function handleAgentTurn(
     profile: selectedProfile,
     currentIntent: triage.intent,
   });
-  profile = updateProfileFromTurn(profile, input.text, triage, toolBundle.selectedToolKeys);
+  profile = updateProfileFromTurn(profile, input.text, triage, toolBundle.selectedToolKeys, onboarding.openLoops);
   const openLoops = await syncConfiguredAgentPriorities({
     userId: input.userId,
     threadId: input.threadId,
@@ -58,6 +71,7 @@ export async function handleAgentTurn(
     profile,
     profileConfig: selectedProfile,
     openLoops: onboarding.openLoops,
+    currentIntent: triage.intent,
   });
   const goalStack = openLoops.map((loop) => loop.loopType);
   const agentPriority = resolveAgentPriority(openLoops);
@@ -71,8 +85,9 @@ export async function handleAgentTurn(
     toolBundle,
     triage,
   });
+  await store.saveProfile(profile);
 
-  const { reply, generationMode } = await generateReplyWithFallback({
+  let { reply, generationMode } = await generateReplyWithFallback({
     text: input.text,
     triage,
     profile,
@@ -80,11 +95,28 @@ export async function handleAgentTurn(
     store,
     selectedProfile,
     onboardingOpenLoops: openLoops,
+    recentMessages,
     recentTurns,
     toolBundle,
     llmRuntime: options.llmRuntime,
     events,
   });
+  profile = await store.getProfile(input.userId);
+
+  const websiteHandoff = buildWebsiteHandoff({ profile, turn: input });
+  const handoffReply = attachWebsiteHandoff(reply, websiteHandoff, generationMode);
+  if (handoffReply) {
+    reply = handoffReply;
+    profile = markWebsiteHandoffSent({ profile, handoff: websiteHandoff, sentAt: input.timestamp });
+    events.push({
+      userId: input.userId,
+      threadId: input.threadId,
+      eventType: "website_handoff_link_sent",
+      input: { intent: triage.intent },
+      output: { url: websiteHandoff.url, expiresAt: websiteHandoff.expiresAt },
+      createdAt: input.timestamp,
+    });
+  }
   await logAssistantMessage(input, store, reply, generationMode, toolBundle.selectedToolKeys);
   profile = rememberAgentReply(profile, reply, input.timestamp);
   conversation = appendTurnHistory(conversation, recentTurns, input, reply);
@@ -114,6 +146,18 @@ export async function handleAgentTurn(
   };
 }
 
+function attachWebsiteHandoff(
+  reply: string,
+  handoff: WebsiteHandoff,
+  _generationMode: "llm" | "fallback",
+): string | undefined {
+  if (!handoff.ready || !handoff.url) return undefined;
+  if (reply.includes(handoff.url)) return reply;
+
+  const linkLine = `you’re all set to finish signup. open your halda console here: ${handoff.url}`;
+  return linkLine;
+}
+
 async function logInboundMessage(
   input: AgentTurnInput,
   store: AgentStateStore,
@@ -127,7 +171,7 @@ async function logInboundMessage(
     body: input.text,
     status: "received",
     externalMessageId: input.externalMessageId,
-    metadata: { triage },
+    metadata: { ...(input.metadata ?? {}), triage },
     occurredAt: input.timestamp,
     processedAt: new Date(),
   });
@@ -218,6 +262,7 @@ async function logAssistantMessage(
     body: reply,
     status: "queued",
     metadata: {
+      ...(input.metadata ?? {}),
       generationMode,
       selectedToolKeys,
     },
@@ -253,6 +298,7 @@ interface GenerateReplyWithFallbackInput {
   store: AgentStateStore;
   selectedProfile: ReturnType<typeof getLifecycleProfile>;
   onboardingOpenLoops: Awaited<ReturnType<typeof advanceOnboarding>>["openLoops"];
+  recentMessages: Awaited<ReturnType<AgentStateStore["listRecentMessages"]>>;
   recentTurns: ReturnType<typeof readRecentTurns>;
   toolBundle: ReturnType<typeof assembleToolBundle>;
   llmRuntime?: LlmRuntime;
@@ -274,6 +320,7 @@ async function generateReplyWithFallback(
       profile: input.profile,
       lifecycleProfile: input.selectedProfile,
       openLoops: input.onboardingOpenLoops,
+      recentMessages: input.recentMessages,
       recentTurns: input.recentTurns,
       triage: input.triage,
       activeIntent: input.toolBundle.activeIntent,
@@ -302,9 +349,11 @@ function updateProfileFromTurn(
   text: string,
   triage: TurnTriage,
   selectedToolKeys: string[],
+  openLoops: AgentOpenLoop[],
 ) {
   const interests = new Set(profile.interests);
   for (const interest of triage.interests) interests.add(interest);
+  const collegeSearch = updateCollegeSearchFacts(profile, text, triage, openLoops);
 
   return {
     ...profile,
@@ -314,6 +363,7 @@ function updateProfileFromTurn(
       lastMessagePreview: text.slice(0, 160),
       lastTriage: triage,
       ...(triage.acceptedSchool ? { acceptedSchool: triage.acceptedSchool } : {}),
+      ...(collegeSearch ? { collegeSearch } : {}),
     },
     interests: [...interests],
     toolAccess: selectedToolKeys,

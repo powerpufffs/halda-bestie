@@ -2,6 +2,7 @@ import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { terminal } from "spectrum-ts/providers/terminal";
 import { handleAgentTurn } from "./agent/handle-turn.ts";
+import { handleIdentityLinkCodeTurn } from "./agent/identity-linking.ts";
 import { createAgentStateStore } from "./agent/state-store-factory.ts";
 import { parseAllowedSenders, resolveSenderId } from "./allowlist.ts";
 import {
@@ -10,6 +11,7 @@ import {
   readLlmConfig,
 } from "./llm/openai-compatible.ts";
 import { splitIntoTextBubbles } from "./message-chunks.ts";
+import { startNotificationOutboxWorker } from "./notification-outbox.ts";
 
 // Spectrum bridges a single agent loop to many messaging interfaces.
 // Each provider in `providers` adds an interface (terminal TUI, iMessage, …).
@@ -42,6 +44,11 @@ if (llmRuntime) {
 }
 
 const app = await createSpectrumApp();
+startNotificationOutboxWorker({
+  app,
+  channel: agentTransport,
+  databaseUrl: process.env.DATABASE_URL,
+});
 
 console.log(`[halda] Transport is ${agentTransport}.`);
 if (agentTransport === "imessage") {
@@ -62,7 +69,8 @@ console.log(
 );
 
 const numberAllowList = parseAllowedSenders(
-  process.env.ALLOWED_SENDERS ?? "+18015896615,+18018756414,+18018746129",
+  process.env.ALLOWED_SENDERS ??
+    "+18015896615,+18018756414,+18018746129,+18018842086,+18013688229,+13858667401,+13853353190,+18016023578,+1801896-6874,+18013003133,+18014719935,+13852776460,+18016166479,+18087212836",
 );
 console.log(`[halda] Allowlist active for ${numberAllowList.size} sender(s).`);
 
@@ -85,6 +93,46 @@ for await (const [space, message] of app.messages) {
     senderId &&
     (agentTransport === "terminal" || numberAllowList.has(senderId))
   ) {
+    const identityLinkReply = await handleIdentityLinkCodeTurn({
+      userId: `${agentTransport}:${senderId}`,
+      threadId: space.id,
+      text: message.content.text,
+      store: stateStore,
+    });
+
+    if (identityLinkReply) {
+      await stateStore.logMessage({
+        channel: agentTransport,
+        userId: `${agentTransport}:${senderId}`,
+        threadId: space.id,
+        role: "user",
+        body: message.content.text,
+        status: "received",
+        externalMessageId: message.id,
+        metadata: { policy: "identity_link_code" },
+        occurredAt: message.timestamp ?? new Date(),
+        processedAt: new Date(),
+      });
+      await stateStore.logMessage({
+        channel: agentTransport,
+        userId: `${agentTransport}:${senderId}`,
+        threadId: space.id,
+        role: "assistant",
+        body: identityLinkReply,
+        status: "sent",
+        metadata: { policy: "identity_link_code" },
+        occurredAt: new Date(),
+        processedAt: new Date(),
+      });
+
+      await space.send(identityLinkReply);
+      console.log("[halda] Identity link code redeemed", {
+        to: space.id,
+        sender: senderId,
+      });
+      continue;
+    }
+
     const result = await handleAgentTurn(
       {
         channel: agentTransport,

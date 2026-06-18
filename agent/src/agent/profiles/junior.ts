@@ -1,14 +1,20 @@
 import type { LifecycleAgentProfile } from "./types.ts";
 import {
+  activitiesIntent,
   applicationIntent,
   careerExplorationIntent,
   chatIntent,
   collegeSearchIntent,
   emailIntent,
+  essayIntent,
   financialAidIntent,
 } from "../config/intents.ts";
 import {
   buildFirstPlanPriority,
+  collectCollegeSearchBudgetPriority,
+  collectCollegeSearchDirectionPriority,
+  collectCollegeSearchGpaPriority,
+  collectCollegeSearchRegionPriority,
   collectInterestAreaPriority,
   collectTargetSchoolsPriority,
 } from "../config/priorities.ts";
@@ -18,10 +24,27 @@ export const juniorProfile: LifecycleAgentProfile = {
   lifecycleStages: ["junior"],
   systemPrompt:
     "You are guiding a high school junior. Focus on college list building, test planning, summer moves, visits, and scholarship prep.",
-  possibleIntents: [chatIntent, careerExplorationIntent, collegeSearchIntent, financialAidIntent, applicationIntent, emailIntent],
-  agentPriorities: [collectInterestAreaPriority, collectTargetSchoolsPriority, buildFirstPlanPriority],
+  possibleIntents: [
+    chatIntent,
+    careerExplorationIntent,
+    collegeSearchIntent,
+    financialAidIntent,
+    applicationIntent,
+    essayIntent,
+    activitiesIntent,
+    emailIntent,
+  ],
+  agentPriorities: [
+    collectCollegeSearchDirectionPriority,
+    collectCollegeSearchRegionPriority,
+    collectCollegeSearchBudgetPriority,
+    collectCollegeSearchGpaPriority,
+    collectInterestAreaPriority,
+    collectTargetSchoolsPriority,
+    buildFirstPlanPriority,
+  ],
   alwaysOnTools: ["build_junior_timeline"],
-  toneRules: ["Be concrete but not stressful.", "Turn vague goals into timelines.", "Recommend useful comparisons."],
+  toneRules: ["Be concrete but not stressful.", "Turn vague goals into timelines.", "Recommend useful comparisons.", "Encourage momentum because junior year can feel crowded."],
   defaultGoals: ["Build a junior timeline.", "Clarify career/major interest.", "Start a school list."],
   defaultOpenLoops: ["collect_interest_area", "collect_region_or_school_preference"],
   milestoneModel: ["timeline_started", "major_interest_saved", "school_list_started"],

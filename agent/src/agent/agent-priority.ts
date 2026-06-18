@@ -1,5 +1,6 @@
 import { createOpenLoop, type AgentStateStore } from "./state-store.ts";
 import type { AgentPriorityConfig, ProfileConfig } from "./config/types.ts";
+import type { TriageIntent } from "./triage.ts";
 import type { AgentOpenLoop, JsonObject } from "./types.ts";
 
 export interface AgentPriority extends JsonObject {
@@ -39,6 +40,7 @@ interface SyncConfiguredAgentPrioritiesInput {
   };
   profileConfig: ProfileConfig;
   openLoops: AgentOpenLoop[];
+  currentIntent: TriageIntent;
 }
 
 export async function syncConfiguredAgentPriorities(
@@ -69,11 +71,22 @@ export async function syncConfiguredAgentPriorities(
     openLoops = await input.store.listOpenLoops(input.userId);
   }
 
-  if (openLoops.length > 0) return openLoops;
+  const applicableOpenLoops = openLoops.filter((loop) => {
+    const priority = findConfiguredPriority(input.profileConfig, loop.loopType);
+    return priority ? priorityAppliesToIntent(priority, input.currentIntent) : true;
+  });
 
-  const nextPriority = input.profileConfig.agentPriorities.find(
-    (priority) => !isPriorityFulfilled(priority, input.profile),
+  if (applicableOpenLoops.length > 0) return applicableOpenLoops;
+
+  const intentScopedPriorities = input.profileConfig.agentPriorities.filter((priority) =>
+    priority.appliesToIntents?.includes(input.currentIntent),
   );
+  const priorityPool = intentScopedPriorities.length > 0
+    ? intentScopedPriorities
+    : input.profileConfig.agentPriorities.filter((priority) => priorityAppliesToIntent(priority, input.currentIntent));
+  const nextPriority = priorityPool
+    .filter((priority) => !isPriorityFulfilled(priority, input.profile))
+    .toSorted((left, right) => right.priority - left.priority)[0];
   if (!nextPriority) return openLoops;
 
   await input.store.upsertOpenLoop(
@@ -90,6 +103,10 @@ export async function syncConfiguredAgentPriorities(
   return input.store.listOpenLoops(input.userId);
 }
 
+function priorityAppliesToIntent(priority: AgentPriorityConfig, intent: TriageIntent): boolean {
+  return !priority.appliesToIntents || priority.appliesToIntents.includes(intent);
+}
+
 function findConfiguredPriority(
   profileConfig: ProfileConfig,
   loopType: string,
@@ -103,6 +120,7 @@ function isPriorityFulfilled(
 ): boolean {
   const facts = asRecord(profile.facts);
   const onboarding = asRecord(facts.onboarding);
+  const collegeSearch = asRecord(facts.collegeSearch);
   const milestones = asRecord(profile.milestones);
 
   switch (priority.fulfillmentCondition) {
@@ -118,6 +136,24 @@ function isPriorityFulfilled(
         asStringArray(facts.acceptedSchools).length > 0 ||
         stringValue(facts.acceptedSchool) !== undefined
       );
+    case "profile.college_search_direction_present":
+      return (
+        stringValue(collegeSearch.direction) !== undefined ||
+        asStringArray(collegeSearch.interests).length > 0 ||
+        asStringArray(collegeSearch.knownSchools).length > 0 ||
+        profile.interests.length > 0 ||
+        asStringArray(facts.targetMajors).length > 0
+      );
+    case "profile.college_search_region_present":
+      return (
+        stringValue(collegeSearch.region) !== undefined ||
+        collegeSearch.openAnywhere === true ||
+        asStringArray(collegeSearch.knownSchools).length > 0
+      );
+    case "profile.college_search_budget_present":
+      return numberValue(collegeSearch.budgetAnnual) !== undefined;
+    case "profile.college_search_gpa_present":
+      return numberValue(collegeSearch.gpa) !== undefined || collegeSearch.gpaSkipped === true;
     case "profile.next_deadline_checked":
       return milestones.nextDeadlineChecked === true;
     case "profile.first_plan_created":
@@ -146,4 +182,8 @@ function asStringArray(value: unknown): string[] {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

@@ -33,13 +33,13 @@ const stagePatterns: Array<{
   {
     stage: "junior",
     confidence: 0.95,
-    patterns: [/\bjunior\b/i, /\b11th\b/i, /\bgrade 11\b/i],
+    patterns: [/\bjunior\b/i, /\bjr\b/i, /\b11th\b/i, /\bgrade 11\b/i],
     reason: "student mentioned junior or 11th grade",
   },
   {
     stage: "senior",
     confidence: 0.95,
-    patterns: [/\bsenior\b/i, /\b12th\b/i, /\bgrade 12\b/i],
+    patterns: [/\bsenior\b/i, /\bsr\b/i, /\b12th\b/i, /\bgrade 12\b/i],
     reason: "student mentioned senior or 12th grade",
   },
   {

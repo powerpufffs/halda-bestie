@@ -36,6 +36,27 @@
       "when": 1781766000000,
       "tag": "0004_college_scorecard_import",
       "breakpoints": false
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781767800000,
+      "tag": "0005_identity_link_codes",
+      "breakpoints": false
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781769600000,
+      "tag": "0006_scorecard_programs",
+      "breakpoints": false
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781771400000,
+      "tag": "0007_lightweight_web_auth",
+      "breakpoints": false
     }
   ]
 }

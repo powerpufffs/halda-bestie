@@ -1,13 +1,18 @@
-import { inferLifecycleStage } from "./lifecycle.ts";
-import type { LifecycleStage, StudentProfileState } from "./types.ts";
+import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
+import type { LlmRuntime } from "./generation.ts";
+import type { AgentConversationMessage, AgentOpenLoop, LifecycleStage, StudentProfileState } from "./types.ts";
 
 export type TriageIntent =
   | "application"
+  | "activities"
   | "career"
   | "chat"
   | "college_search"
+  | "decision"
+  | "essay"
   | "email"
   | "financial_aid"
+  | "interview"
   | "transfer";
 
 export type TriageRole =
@@ -20,8 +25,31 @@ export type TriageRole =
 
 export type TriageCollegeIntent = "looking_to_enter_college" | "helping_someone" | "not_looking" | "unknown";
 export type TriageUrgency = "low" | "medium" | "high";
+export type TriageOnboardingResolution = "full_answer" | "partial_answer" | "topic_switch" | "no_answer";
+
+export interface TriageOpenLoopPlan {
+  loopType: string;
+  prompt: string;
+  priority: number;
+  blocking?: boolean;
+}
+
+export interface TriageOnboardingPlan {
+  firstName?: string;
+  highSchool?: string;
+  role?: TriageRole;
+  collegeIntent?: TriageCollegeIntent;
+  gradeLevel?: string;
+  lifecycleStage?: LifecycleStage;
+  complete?: boolean;
+  resolution?: TriageOnboardingResolution;
+  nextLoop?: TriageOpenLoopPlan;
+  completeLoopTypes: string[];
+  evidence: string[];
+}
 
 export interface TurnTriage {
+  source: "llm" | "fallback";
   intent: TriageIntent;
   role: TriageRole;
   collegeIntent: TriageCollegeIntent;
@@ -29,206 +57,322 @@ export interface TurnTriage {
   lifecycleStage: LifecycleStage;
   lifecycleConfidence: number;
   lifecycleReason: string;
+  firstName?: string;
+  highSchool?: string;
   acceptedSchool?: string;
   interests: string[];
   acknowledgmentOnly: boolean;
   correction: boolean;
+  onboardingRelevant: boolean;
+  onboarding: TriageOnboardingPlan;
   urgency: TriageUrgency;
   evidence: string[];
 }
 
-const interestPatterns: Array<{ interest: string; pattern: RegExp }> = [
-  { interest: "nursing", pattern: /\bnursing\b/i },
-  { interest: "computer science", pattern: /\b(cs|computer science|coding|programming|ai)\b/i },
-  { interest: "business", pattern: /\bbusiness\b/i },
-  { interest: "healthcare", pattern: /\bhealthcare\b/i },
+interface TriageOptions {
+  runtime?: LlmRuntime;
+  recentMessages?: AgentConversationMessage[];
+  openLoops?: AgentOpenLoop[];
+}
+
+type ChatCompletionCreateBody = ChatCompletionCreateParamsNonStreaming & {
+  thinking?: {
+    type: "disabled";
+  };
+};
+
+export async function triageTurn(
+  text: string,
+  profile: StudentProfileState,
+  options: TriageOptions = {},
+): Promise<TurnTriage> {
+  if (options.runtime) {
+    const llmTriage = await triageTurnWithLlm(text, profile, { ...options, runtime: options.runtime });
+    if (llmTriage) return llmTriage;
+  }
+
+  return buildUnknownTriage(profile);
+}
+
+async function triageTurnWithLlm(
+  text: string,
+  profile: StudentProfileState,
+  options: Required<Pick<TriageOptions, "runtime">> & TriageOptions,
+): Promise<TurnTriage | undefined> {
+  try {
+    const completion = await options.runtime.client.chat.completions.create(withMoonshotThinkingDisabled(
+      options.runtime.config.model,
+      {
+        model: options.runtime.config.model,
+        messages: [
+          {
+            role: "system",
+            content: [
+              "You classify one student message for Halda, a college guidance agent.",
+              "Return only valid JSON. Do not include markdown.",
+              "Infer meaning from the message and recent context. Prefer unknown/null over guessing.",
+              "Use these exact enum values when applicable:",
+              "intent: application, activities, career, chat, college_search, decision, essay, email, financial_aid, interview, transfer",
+              "role: student, supporter, counselor, institution_staff, not_college_bound, unknown",
+              "collegeIntent: looking_to_enter_college, helping_someone, not_looking, unknown",
+              "lifecycleStage: unknown, freshman, sophomore, junior, senior, transfer, current_college, gap_year",
+              "urgency: low, medium, high",
+              "gradeLevel should be a natural compact value like 9th, 10th, 11th, 12th, transfer, current_college, gap_year, or unknown.",
+              "firstName and highSchool should be null unless the user gave that information.",
+              "Do not treat a greeting, acknowledgment, slang, grade, or role as a person's name unless the user clearly says it is their name.",
+              "onboardingRelevant is false only when the message is noise, empty, spam, or clearly not a real student/supporter turn.",
+              "You own onboarding decisions. Set onboarding.nextLoop to the next thing Halda should remember to ask, or null if no onboarding loop should be open.",
+              "Return shape: {\"intent\":\"chat\",\"role\":\"unknown\",\"collegeIntent\":\"unknown\",\"gradeLevel\":\"unknown\",\"lifecycleStage\":\"unknown\",\"lifecycleConfidence\":0,\"lifecycleReason\":\"...\",\"firstName\":null,\"highSchool\":null,\"acceptedSchool\":null,\"interests\":[],\"acknowledgmentOnly\":false,\"correction\":false,\"onboardingRelevant\":true,\"urgency\":\"low\",\"evidence\":[],\"onboarding\":{\"firstName\":null,\"highSchool\":null,\"role\":\"unknown\",\"collegeIntent\":\"unknown\",\"gradeLevel\":\"unknown\",\"lifecycleStage\":\"unknown\",\"complete\":false,\"resolution\":\"partial_answer\",\"nextLoop\":{\"loopType\":\"collect_first_name\",\"prompt\":\"what’s your first name?\",\"priority\":100},\"completeLoopTypes\":[],\"evidence\":[]}}",
+            ].join("\n"),
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              currentProfile: {
+                lifecycleStage: profile.lifecycleStage,
+                lifecycleStageConfidence: profile.lifecycleStageConfidence,
+                profileSummary: profile.profileSummary,
+                facts: {
+                  firstName: profile.facts.firstName,
+                  highSchool: profile.facts.highSchool,
+                  onboarding: profile.facts.onboarding,
+                  gradeLevel: profile.facts.gradeLevel,
+                  collegeIntent: profile.facts.collegeIntent,
+                },
+                interests: profile.interests,
+                constraints: profile.constraints,
+              },
+              recentMessages: (options.recentMessages ?? []).slice(-6).map((message) => ({
+                role: message.role,
+                channel: message.channel,
+                body: message.body,
+              })),
+              openLoops: (options.openLoops ?? []).map((loop) => ({
+                loopType: loop.loopType,
+                prompt: loop.prompt,
+                priority: loop.priority,
+              })),
+              latestMessage: text,
+            }),
+          },
+        ],
+        temperature: 0,
+        max_completion_tokens: 360,
+      },
+    ));
+
+    return parseLlmTriage(completion.choices[0]?.message.content, profile);
+  } catch {
+    return undefined;
+  }
+}
+
+const triageIntents: TriageIntent[] = [
+  "application",
+  "activities",
+  "career",
+  "chat",
+  "college_search",
+  "decision",
+  "essay",
+  "email",
+  "financial_aid",
+  "interview",
+  "transfer",
 ];
 
-const actionIntentPatterns: Array<{ intent: Exclude<TriageIntent, "chat">; patterns: RegExp[] }> = [
-  {
-    intent: "email",
-    patterns: [
-      /\b(email|emails|inbox|mail)\b/i,
-      /\bdid i get\b.{0,80}\b(from|about)\b/i,
-      /\banything\b.{0,80}\b(from|about)\b/i,
-    ],
-  },
-  { intent: "transfer", patterns: [/\btransfer\b/i, /\bcredits?\b/i, /\bcommunity college\b/i] },
-  {
-    intent: "financial_aid",
-    patterns: [/\bscholarship/i, /\bfafsa\b/i, /\bfinancial aid\b/i, /\bnet price\b/i, /\bcost\b/i, /\baid\b/i, /\btuition\b/i],
-  },
-  {
-    intent: "application",
-    patterns: [/\bapply\b/i, /\bapplication\b/i, /\bessay\b/i, /\bdeadline\b/i, /\bcommon app\b/i, /\badmissions requirements?\b/i],
-  },
-  {
-    intent: "college_search",
-    patterns: [
-      /\bcollege list\b/i,
-      /\bschool list\b/i,
-      /\bdoes\b.{1,60}\b(have|offer)\b/i,
-      /\b(find|search|compare|recommend|look at)\b.{0,40}\b(colleges?|schools?|universit(?:y|ies))\b/i,
-      /\b(colleges?|schools?|universit(?:y|ies))\b.{0,40}\b(for|near|with)\b/i,
-      /\buvu\b/i,
-    ],
-  },
-  { intent: "career", patterns: [/\bcareer\b/i, /\bmajor\b/i, /\bjob\b/i, /\bwant to do\b/i, /\bnursing\b/i, /\bhealthcare\b/i, /\bcomputer science\b/i, /\bcoding\b/i, /\bbusiness\b/i] },
+const triageRoles: TriageRole[] = [
+  "student",
+  "supporter",
+  "counselor",
+  "institution_staff",
+  "not_college_bound",
+  "unknown",
 ];
 
-export function triageTurn(text: string, profile: StudentProfileState): TurnTriage {
-  const normalized = text.toLowerCase();
-  const lifecycle = inferLifecycleStage(text, profile);
-  const gradeLevel = detectGradeLevel(normalized);
-  const role = detectRole(normalized) ?? inferRoleFromGrade(gradeLevel);
-  const collegeIntent = detectCollegeIntent(normalized, role, gradeLevel);
-  const acceptedSchool = extractAcceptedSchool(text);
-  const interests = interestPatterns.filter(({ pattern }) => pattern.test(text)).map(({ interest }) => interest);
-  const acknowledgmentOnly = detectAcknowledgmentOnly(text);
-  const correction = detectCorrection(text);
-  const intent = detectIntent(text);
-  const urgency = detectUrgency(normalized);
-  const evidence = buildEvidence({
-    role,
-    collegeIntent,
-    gradeLevel,
-    lifecycleStage: lifecycle.stage,
-    lifecycleReason: lifecycle.reason,
-    acceptedSchool,
-    interests,
-    acknowledgmentOnly,
-    correction,
-    urgency,
-    intent,
-  });
+const triageCollegeIntents: TriageCollegeIntent[] = [
+  "looking_to_enter_college",
+  "helping_someone",
+  "not_looking",
+  "unknown",
+];
+
+const lifecycleStages: LifecycleStage[] = [
+  "unknown",
+  "freshman",
+  "sophomore",
+  "junior",
+  "senior",
+  "transfer",
+  "current_college",
+  "gap_year",
+];
+
+const triageUrgencies: TriageUrgency[] = ["low", "medium", "high"];
+
+function parseLlmTriage(content: string | null | undefined, profile: StudentProfileState): TurnTriage | undefined {
+  if (!content) return undefined;
+
+  const raw = asRecord(JSON.parse(content.trim()));
+  if (!raw) return undefined;
+
+  const intent = readEnum(raw.intent, triageIntents) ?? "chat";
+  const role = readEnum(raw.role, triageRoles) ?? "unknown";
+  const collegeIntent = readEnum(raw.collegeIntent, triageCollegeIntents) ?? "unknown";
+  const modelLifecycleStage = readEnum(raw.lifecycleStage, lifecycleStages) ?? "unknown";
+  const lifecycleStage = modelLifecycleStage === "unknown" ? profile.lifecycleStage : modelLifecycleStage;
+  const lifecycleConfidence =
+    readNumber(raw.lifecycleConfidence) ??
+    (lifecycleStage === profile.lifecycleStage ? profile.lifecycleStageConfidence : 0);
+  const lifecycleReason = readString(raw.lifecycleReason) ?? "llm-classified turn";
+  const firstName = readString(raw.firstName);
+  const highSchool = readString(raw.highSchool);
+  const acceptedSchool = readString(raw.acceptedSchool);
+  const interests = readStringArray(raw.interests);
+  const acknowledgmentOnly = typeof raw.acknowledgmentOnly === "boolean" ? raw.acknowledgmentOnly : false;
+  const correction = typeof raw.correction === "boolean" ? raw.correction : false;
+  const onboardingRelevant = typeof raw.onboardingRelevant === "boolean" ? raw.onboardingRelevant : true;
+  const urgency = readEnum(raw.urgency, triageUrgencies) ?? "low";
+  const evidence = readStringArray(raw.evidence);
+  if (evidence.length === 0) evidence.push(`intent:${intent}`, "source:llm");
+  const onboarding = readOnboardingPlan(raw.onboarding);
 
   return {
+    source: "llm",
     intent,
-    role: role ?? "unknown",
-    collegeIntent: collegeIntent ?? "unknown",
-    gradeLevel: gradeLevel ?? "unknown",
-    lifecycleStage: lifecycle.stage,
-    lifecycleConfidence: lifecycle.confidence,
-    lifecycleReason: lifecycle.reason,
+    role,
+    collegeIntent,
+    gradeLevel: readString(raw.gradeLevel) ?? "unknown",
+    lifecycleStage,
+    lifecycleConfidence,
+    lifecycleReason,
+    firstName,
+    highSchool,
     acceptedSchool,
     interests,
     acknowledgmentOnly,
     correction,
+    onboardingRelevant,
+    onboarding,
     urgency,
     evidence,
   };
 }
 
-function detectIntent(text: string): TriageIntent {
-  return actionIntentPatterns.find((candidate) => candidate.patterns.some((pattern) => pattern.test(text)))?.intent ?? "chat";
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
 }
 
-function detectRole(text: string): TriageRole | undefined {
-  if (/\b(not|don't|do not|dont|no)\b.{0,30}\b(college|university|school)\b/.test(text)) return "not_college_bound";
-  if (/\b(parent|guardian|mom|dad)\b/.test(text) || /\bmy (son|daughter|kid|child)\b/.test(text)) return "supporter";
-  if (/\b(counselor|advisor|teacher)\b/.test(text)) return "counselor";
-  if (/\b(admissions|staff|recruiter|institution)\b/.test(text)) return "institution_staff";
-  if (/\b(i am|i['\u2019]m|im)\b/.test(text) || /\b(student|freshman|sophomore|junior|senior|transfer)\b/.test(text)) return "student";
-  return undefined;
+function readString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "unknown" || trimmed.toLowerCase() === "null") return undefined;
+  return trimmed;
 }
 
-function detectCollegeIntent(
-  text: string,
-  role: TriageRole | undefined,
-  gradeLevel: string | undefined,
-): TriageCollegeIntent | undefined {
-  if (role === "not_college_bound") return "not_looking";
-  if (role && ["supporter", "counselor", "institution_staff"].includes(role)) return "helping_someone";
+function readNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" || Number.isNaN(value)) return undefined;
+  return Math.max(0, Math.min(1, value));
+}
 
-  if (
-    /\b(college|university|school|major|career|apply|application|fafsa|scholarship|transfer|tuition|admission|accepted|admitted|uvu)\b/.test(text) ||
-    interestPatterns.some(({ pattern }) => pattern.test(text)) ||
-    Boolean(gradeLevel)
-  ) {
-    return "looking_to_enter_college";
+function readEnum<T extends string>(value: unknown, allowed: T[]): T | undefined {
+  return typeof value === "string" && allowed.includes(value as T) ? (value as T) : undefined;
+}
+
+function readKnownEnum<T extends string>(value: unknown, allowed: T[]): T | undefined {
+  const parsed = readEnum(value, allowed);
+  return parsed === "unknown" ? undefined : parsed;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const items: string[] = [];
+  for (const item of value) {
+    const text = readString(item);
+    if (text) items.push(text);
   }
-
-  return undefined;
+  return items;
 }
 
-function detectGradeLevel(text: string): string | undefined {
-  if (/\b9th\b|\bfreshman\b/.test(text) && !/\bcollege\b/.test(text)) return "9th";
-  if (/\b10th\b|\bsophomore\b/.test(text)) return "10th";
-  if (/\b11th\b|\bjunior\b/.test(text)) return "11th";
-  if (/\b12th\b|\bsenior\b/.test(text)) return "12th";
-  if (/\btransfer|transferring|community college\b/.test(text)) return "transfer";
-  if (/\bin college\b|\bcollege student\b|\bfreshman in college\b|\balready in college\b/.test(text)) return "current_college";
-  if (/\bgap year\b|\btook a year off\b/.test(text)) return "gap_year";
-  return undefined;
+const onboardingResolutions: TriageOnboardingResolution[] = [
+  "full_answer",
+  "partial_answer",
+  "topic_switch",
+  "no_answer",
+];
+
+function readOnboardingPlan(value: unknown): TriageOnboardingPlan {
+  const raw = asRecord(value) ?? {};
+  const nextLoop = readOpenLoopPlan(raw.nextLoop);
+
+  return {
+    firstName: readString(raw.firstName),
+    highSchool: readString(raw.highSchool),
+    role: readKnownEnum(raw.role, triageRoles),
+    collegeIntent: readKnownEnum(raw.collegeIntent, triageCollegeIntents),
+    gradeLevel: readString(raw.gradeLevel),
+    lifecycleStage: readKnownEnum(raw.lifecycleStage, lifecycleStages),
+    complete: typeof raw.complete === "boolean" ? raw.complete : undefined,
+    resolution: readEnum(raw.resolution, onboardingResolutions),
+    nextLoop,
+    completeLoopTypes: readStringArray(raw.completeLoopTypes),
+    evidence: readStringArray(raw.evidence),
+  };
 }
 
-function inferRoleFromGrade(gradeLevel: string | undefined): TriageRole | undefined {
-  return gradeLevel ? "student" : undefined;
+function readOpenLoopPlan(value: unknown): TriageOpenLoopPlan | undefined {
+  const raw = asRecord(value);
+  if (!raw) return undefined;
+
+  const loopType = readString(raw.loopType);
+  const prompt = readString(raw.prompt);
+  if (!loopType || !prompt) return undefined;
+
+  return {
+    loopType,
+    prompt,
+    priority: readPriority(raw.priority),
+    blocking: typeof raw.blocking === "boolean" ? raw.blocking : undefined,
+  };
 }
 
-function extractAcceptedSchool(text: string): string | undefined {
-  const acceptedMatch =
-    text.match(
-      /\b(?:got\s+accepted|accepted|admitted)\s+(?:into|to|at)\s+([a-z][a-z0-9&.' -]*?)(?=$|[.!?,;]|\s+(?:and|but|so|because|lol)\b)/i,
-    ) ??
-    text.match(/\bgot\s+into\s+([a-z][a-z0-9&.' -]*?)(?=$|[.!?,;]|\s+(?:and|but|so|because|lol)\b)/i);
-  const school = acceptedMatch?.[1]?.trim().replace(/\s+/g, " ");
-
-  return school ? formatSchoolName(school) : undefined;
+function readPriority(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function formatSchoolName(value: string): string {
-  if (/[A-Z]{2,}/.test(value)) return value;
+function withMoonshotThinkingDisabled(
+  model: string,
+  body: ChatCompletionCreateBody,
+): ChatCompletionCreateBody {
+  if (!model.toLowerCase().startsWith("kimi-k2")) return body;
 
-  return value
-    .split(" ")
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ");
+  return {
+    ...body,
+    thinking: { type: "disabled" },
+  };
 }
 
-function detectAcknowledgmentOnly(text: string): boolean {
-  return /^(bet|ok|okay|k|cool|nice|word|gotcha|got it|sounds good|alright|all right|thanks|thank you|ty)\b[.!?]*$/i.test(
-    text.trim(),
-  );
-}
-
-function detectCorrection(text: string): boolean {
-  return /\b(that was(?:n['\u2019]t| not)|not)\b.{0,30}\b(what i (?:was )?ask(?:ing|ed)?|my question)\b/i.test(
-    text,
-  );
-}
-
-function detectUrgency(text: string): TriageUrgency {
-  if (/\b(urgent|asap|today|tonight|deadline|due|panic|stressed|freaking out)\b/.test(text)) return "high";
-  if (/\b(soon|this week|next week|worried|nervous)\b/.test(text)) return "medium";
-  return "low";
-}
-
-function buildEvidence(input: {
-  role?: TriageRole;
-  collegeIntent?: TriageCollegeIntent;
-  gradeLevel?: string;
-  lifecycleStage: LifecycleStage;
-  lifecycleReason: string;
-  acceptedSchool?: string;
-  interests: string[];
-  acknowledgmentOnly: boolean;
-  correction: boolean;
-  urgency: TriageUrgency;
-  intent: TriageIntent;
-}): string[] {
-  const evidence: string[] = [`intent:${input.intent}`];
-  if (input.role) evidence.push(`role:${input.role}`);
-  if (input.collegeIntent) evidence.push(`college_intent:${input.collegeIntent}`);
-  if (input.gradeLevel) evidence.push(`grade:${input.gradeLevel}`);
-  if (input.lifecycleStage !== "unknown" && input.lifecycleReason !== "kept existing lifecycle stage") {
-    evidence.push(`lifecycle:${input.lifecycleStage}`);
-  }
-  if (input.acceptedSchool) evidence.push(`accepted_school:${input.acceptedSchool}`);
-  for (const interest of input.interests) evidence.push(`interest:${interest}`);
-  if (input.acknowledgmentOnly) evidence.push("acknowledgment_only");
-  if (input.correction) evidence.push("correction");
-  if (input.urgency !== "low") evidence.push(`urgency:${input.urgency}`);
-
-  return evidence;
+function buildUnknownTriage(profile: StudentProfileState): TurnTriage {
+  return {
+    source: "fallback",
+    intent: "chat",
+    role: "unknown",
+    collegeIntent: "unknown",
+    gradeLevel: "unknown",
+    lifecycleStage: profile.lifecycleStage,
+    lifecycleConfidence: profile.lifecycleStageConfidence,
+    lifecycleReason: "llm unavailable",
+    interests: [],
+    acknowledgmentOnly: false,
+    correction: false,
+    onboardingRelevant: false,
+    onboarding: {
+      completeLoopTypes: [],
+      evidence: [],
+    },
+    urgency: "low",
+    evidence: ["source:fallback"],
+  };
 }

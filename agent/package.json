@@ -12,7 +12,11 @@
     "dev": "node --env-file=.env --import tsx --watch src/index.ts",
     "dev:terminal": "AGENT_TRANSPORT=terminal node --env-file=.env --import tsx --watch src/index.ts",
     "import:scorecard": "node --env-file=.env --import tsx src/data/import-scorecard-institutions.ts",
+    "import:scorecard:programs": "node --env-file=.env --import tsx src/data/import-scorecard-programs.ts",
+    "test:communication-style": "node --import tsx src/demo/communication-style-smoke.ts",
     "test:onboarding": "node --import tsx src/demo/onboarding-smoke.ts",
+    "test:reasoning-leak": "node --import tsx src/demo/reasoning-leak-smoke.ts",
+    "test:visitor-handoff": "node --import tsx src/demo/visitor-handoff-smoke.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

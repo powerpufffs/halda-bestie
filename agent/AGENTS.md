@@ -10,6 +10,16 @@ This is a [Spectrum](https://photon.codes/docs/spectrum-ts) app, pinned to `spec
 - Lifecycle-specific behavior lives under `src/agent/profiles`.
 - Global and lifecycle tools live under `src/tools`.
 
+## Conversation architecture
+
+- Do not build conversational replies with deterministic intent functions, hardcoded templates, or `answerForIntent`-style branches.
+- TypeScript owns routing, state machines, database writes, tool selection, and structured validation. The LLM owns natural language.
+- If the agent needs to remember something, expose a small tool or structured state update. Do not parse subjective conversation preferences with regex/if-else rules.
+- Tone and personality adjustments must go through `update_communication_style`; prompts can instruct the model how to use it, but code should not map phrases like "less slang" or "don't roast me" into profile fields.
+- Intent routing may use simple deterministic signals only to decide which prompt slice and tools are available. It must not generate the reply text.
+- Agent-driven goals belong in persisted open loops / priorities and injected prompt directives, not in scripted multi-turn copy.
+- Emergency fallback copy is allowed only for LLM failure paths. Do not expand fallback logic into a parallel chatbot.
+
 ## Environment
 
 This project reads secrets from `.env` (gitignored). **Do not read, write, or echo `.env`** — it contains credentials.

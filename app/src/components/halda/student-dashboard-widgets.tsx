@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export const navItems = ["mission", "schools", "inbox", "crew"];
+export const navItems = ["mission", "schools", "inbox", "chat"];
 
 export const quickActions = [
   { label: "find likely schools", detail: "starter list", tone: "teal" },
@@ -28,8 +28,8 @@ export function MissionPanel() {
         ["week 2", "build a 12 school starter list", "next"],
         ["week 3", "decide test plan", "queued"],
       ].map(([time, title, state]) => (
-        <div className="flex items-center gap-3 rounded-lg border border-[#dbe6e8] bg-[#fbfdfd] p-4" key={title}>
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-white text-xs font-semibold text-[#2a8c84] shadow-sm">
+        <div className="flex items-center gap-3 rounded-[8px] border-2 border-[#17202a] bg-[#fffaf0] p-4 shadow-[3px_3px_0_#17202a]" key={title}>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[6px] border-2 border-[#17202a] bg-[#d7eee9] text-xs font-bold text-[#17202a]">
             {time}
           </span>
           <div className="min-w-0 flex-1">
@@ -44,9 +44,9 @@ export function MissionPanel() {
 
 export function SchoolPanel() {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3">
       {schoolMatches.map((school) => (
-        <div className="rounded-lg border border-[#dbe6e8] bg-[#fbfdfd] p-4" key={school.name}>
+        <div className="rounded-[8px] border-2 border-[#17202a] bg-[#fffaf0] p-4 shadow-[3px_3px_0_#17202a]" key={school.name}>
           <div className="text-sm font-semibold">{school.name}</div>
           <div className="mt-1 text-xs text-[#758694]">{school.signal}</div>
           <div className="mt-4">
@@ -62,7 +62,7 @@ export function CrewPanel() {
   return (
     <div className="grid gap-3">
       {crewUpdates.map((update) => (
-        <div className="rounded-lg border border-[#dbe6e8] bg-[#fbfdfd] p-4 text-sm text-[#536576]" key={update}>
+        <div className="rounded-[8px] border-2 border-[#17202a] bg-[#fffaf0] p-4 text-sm font-medium text-[#536576] shadow-[3px_3px_0_#17202a]" key={update}>
           {update}
         </div>
       ))}
@@ -83,12 +83,12 @@ export function Panel({
 }) {
   return (
     <section
-      className={`rounded-lg border border-[#dbe6e8] bg-white ${
+      className={`rounded-[8px] border-2 border-[#17202a] bg-[#fffaf0] ${
         compact ? "p-4" : "p-5"
-      } shadow-[0_14px_36px_rgba(35,62,76,0.05)]`}
+      } shadow-[5px_5px_0_#17202a]`}
     >
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-[#172637]">{title}</h2>
+        <h2 className="text-sm font-bold uppercase tracking-[0.08em] text-[#17202a]">{title}</h2>
         {action}
       </div>
       {children}
@@ -98,8 +98,8 @@ export function Panel({
 
 export function Metric({ value, label }: { value: number; label: string }) {
   return (
-    <div className="rounded-lg border border-[#dbe6e8] bg-[#fbfdfd] px-4 py-3">
-      <div className="text-2xl font-semibold tabular-nums text-[#172637]">{value}</div>
+    <div className="rounded-[8px] border-2 border-[#17202a] bg-[#f4efdf] px-4 py-3 shadow-[3px_3px_0_#17202a]">
+      <div className="text-2xl font-bold tabular-nums text-[#17202a]">{value}</div>
       <div className="text-xs text-[#758694]">{label}</div>
     </div>
   );
@@ -114,12 +114,12 @@ export function Status({
 }) {
   const className =
     tone === "bad"
-      ? "border-[#f0b7ad] bg-[#fff0ee] text-[#8c2f21]"
+      ? "border-[#17202a] bg-[#f3c7bb] text-[#17202a]"
       : tone === "good"
-        ? "border-[#b9ded5] bg-[#edf8f4] text-[#11635d]"
-        : "border-[#b9cfec] bg-[#eff6ff] text-[#2d5d90]";
+        ? "border-[#17202a] bg-[#d7eee9] text-[#17202a]"
+        : "border-[#17202a] bg-[#dce8f5] text-[#17202a]";
 
-  return <div className={`rounded-lg border px-4 py-3 text-sm ${className}`}>{children}</div>;
+  return <div className={`rounded-[8px] border-2 px-4 py-3 text-sm font-semibold shadow-[3px_3px_0_#17202a] ${className}`}>{children}</div>;
 }
 
 export function Tag({
@@ -131,13 +131,13 @@ export function Tag({
 }) {
   const className =
     tone === "teal"
-      ? "bg-[#e7f4f1] text-[#11635d]"
+      ? "border-[#17202a] bg-[#d7eee9] text-[#17202a]"
       : tone === "coral"
-        ? "bg-[#fff0ee] text-[#a34030]"
-        : "bg-[#eef3f4] text-[#607283]";
+        ? "border-[#17202a] bg-[#f3c7bb] text-[#17202a]"
+        : "border-[#17202a] bg-[#e7e0d4] text-[#17202a]";
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${className}`}>
+    <span className={`inline-flex items-center rounded-[4px] border-2 px-2 py-1 text-xs font-bold uppercase tracking-[0.04em] ${className}`}>
       {children}
     </span>
   );
@@ -145,7 +145,7 @@ export function Tag({
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-[#cad8dc] bg-[#fbfdfd] px-4 py-6 text-sm text-[#758694]">
+    <div className="rounded-[8px] border-2 border-dashed border-[#17202a] bg-[#f4efdf] px-4 py-6 text-sm font-medium text-[#596673]">
       {children}
     </div>
   );

@@ -5,7 +5,7 @@ export type Database = ReturnType<typeof createDatabase>;
 
 export function createDatabase(databaseUrl: string) {
   const client = postgres(sanitizeDatabaseUrl(databaseUrl), {
-    max: 5,
+    max: 1,
     prepare: false,
   });
 
@@ -15,5 +15,8 @@ export function createDatabase(databaseUrl: string) {
 function sanitizeDatabaseUrl(databaseUrl: string): string {
   const url = new URL(databaseUrl);
   url.searchParams.delete("sslrootcert");
+  if (url.hostname.endsWith(".psdb.cloud") && !url.searchParams.has("sslnegotiation")) {
+    url.searchParams.set("sslnegotiation", "direct");
+  }
   return url.toString();
 }

@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  AgentConversationMessage,
   AgentMessageRecord,
   AgentOpenLoop,
   ConversationState,
@@ -14,6 +15,7 @@ export interface AgentStateStore {
   saveConversationState(state: ConversationState): Promise<void>;
   listOpenLoops(userId: string): Promise<AgentOpenLoop[]>;
   upsertOpenLoop(loop: AgentOpenLoop): Promise<void>;
+  listRecentMessages(userId: string, limit?: number): Promise<AgentConversationMessage[]>;
   logMessage(message: AgentMessageRecord): Promise<void>;
   logEvents(events: AgentEvent[]): Promise<void>;
 }
@@ -87,6 +89,20 @@ export class InMemoryAgentStateStore implements AgentStateStore {
 
   async upsertOpenLoop(loop: AgentOpenLoop): Promise<void> {
     this.#openLoops.set(loop.id, { ...loop, updatedAt: new Date() });
+  }
+
+  async listRecentMessages(userId: string, limit = 12): Promise<AgentConversationMessage[]> {
+    return this.#messages
+      .filter((message) => message.userId === userId)
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .slice(-limit)
+      .map((message) => ({
+        threadId: message.threadId,
+        channel: message.channel,
+        role: message.role as "user" | "assistant",
+        body: message.body,
+        occurredAt: message.occurredAt,
+      }));
   }
 
   async logMessage(message: AgentMessageRecord): Promise<void> {

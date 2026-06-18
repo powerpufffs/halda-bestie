@@ -24,13 +24,11 @@ const channelToolKeys: Partial<Record<AgentChannel, string[]>> = {
 
 export function assembleToolBundle(input: ToolBundleInput) {
   const intent = resolveIntentConfig(input.profile, input.currentIntent);
-  const selectedKeys = intent.name === "chat"
-    ? []
-    : [
-        ...input.profile.alwaysOnTools,
-        ...intent.tools,
-        ...(channelToolKeys[input.channel] ?? []),
-      ];
+  const selectedKeys = [
+    ...(intent.name === "chat" ? [] : input.profile.alwaysOnTools),
+    ...intent.tools,
+    ...(channelToolKeys[input.channel] ?? []),
+  ];
 
   const resolvedTools = resolveTools(selectedKeys);
   assertAllToolKeysResolved(selectedKeys, resolvedTools);

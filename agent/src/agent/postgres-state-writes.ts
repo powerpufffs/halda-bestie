@@ -15,6 +15,7 @@ interface MessagingIdentityContext {
 export async function insertMessageRecord(input: {
   conversationId: string;
   message: AgentMessageRecord;
+  messagePlatformId: string;
   participant: MessagingIdentityContext;
   rows: RowExecutor;
 }): Promise<void> {
@@ -40,7 +41,7 @@ export async function insertMessageRecord(input: {
     )
     values (
       ${input.conversationId}::uuid,
-      ${input.participant.platformId}::uuid,
+      ${input.messagePlatformId}::uuid,
       ${isUserMessage ? sql`${input.participant.identityId}::uuid` : sql`null`},
       ${isUserMessage ? sql`null` : sql`${input.participant.identityId}::uuid`},
       ${isUserMessage ? input.participant.identity.externalIdentity : "halda-agent"},

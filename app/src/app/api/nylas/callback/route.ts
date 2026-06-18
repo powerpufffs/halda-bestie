@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { readWebSession } from "@/lib/lightweight-auth";
 import { exchangeNylasCode } from "@/lib/nylas";
 import { verifyOAuthState } from "@/lib/oauth-state";
 import { ensureUserForExternalId } from "@/lib/user-identity";
@@ -32,10 +33,11 @@ export async function GET(request: NextRequest) {
     });
 
     const synced = await syncRecentMessagesForAccount(account, 25);
-    const url = new URL("/", request.nextUrl.origin);
+    const session = await readWebSession();
+    const url = new URL(session ? "/join" : "/", request.nextUrl.origin);
     url.searchParams.set("connected", "1");
     url.searchParams.set("synced", String(synced));
-    url.searchParams.set("userId", state.externalUserId);
+    if (!session) url.searchParams.set("userId", state.externalUserId);
 
     return NextResponse.redirect(url);
   } catch (error) {

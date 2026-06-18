@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { searchScorecardInstitutions } from "../data/scorecard-search.ts";
+import { discoverScorecardInstitutions } from "../data/scorecard-search.ts";
 import { defineTool } from "./types.ts";
 
 export const lifecycleTools = [
@@ -21,7 +21,7 @@ export const lifecycleTools = [
     async execute(input) {
       return {
         persona:
-          "Friendly older-student energy: warm, concise, curious, never corporate, and allergic to form-prison onboarding.",
+          "Friendly guide energy: warm, concise, curious, never corporate, and not form-like.",
         goal:
           "Answer the immediate message, identify the person's role and lifecycle stage fast, then hand off to the right profile.",
         replyPolicy: [
@@ -100,67 +100,40 @@ export const lifecycleTools = [
   }),
   defineTool({
     key: "college_match_search",
-    description: "Search imported College Scorecard institutions by name, interest, constraint, or region.",
+    description:
+      "Find college matches from imported College Scorecard data using direction, schools, region, budget, GPA, first-gen, or transfer context.",
     inputSchema: z.object({
       interests: z.array(z.string()).default([]),
+      targetMajor: z.string().optional(),
+      knownSchools: z.array(z.string()).default([]),
       region: z.string().optional(),
-      constraints: z.array(z.string()).default([]),
+      budgetAnnual: z.number().positive().optional(),
+      gpa: z.number().min(0).max(5).optional(),
+      firstGen: z.boolean().optional(),
+      isTransfer: z.boolean().optional(),
       maxResults: z.number().int().min(1).max(10).default(5),
     }),
     lifecycleStages: ["unknown", "freshman", "sophomore", "junior", "senior", "transfer", "current_college", "gap_year"],
     async execute(input) {
-      const query = [...input.interests, ...input.constraints].join(" ").trim() || input.region || "college";
-      const results = await searchScorecardInstitutions({
-        query,
-        state: input.region,
+      const discovery = await discoverScorecardInstitutions({
+        interests: input.interests,
+        targetMajor: input.targetMajor,
+        knownSchools: input.knownSchools,
+        region: input.region,
+        budgetAnnual: input.budgetAnnual,
+        gpa: input.gpa,
+        firstGen: input.firstGen,
+        isTransfer: input.isTransfer,
         maxResults: input.maxResults,
       });
 
       return {
-        status: results.length > 0 ? "ok" : "not_found",
-        source: "College Scorecard",
-        query: {
-          interests: input.interests,
-          region: input.region,
-          constraints: input.constraints,
-          maxResults: input.maxResults,
-        },
-        results,
-      };
-    },
-  }),
-  defineTool({
-    key: "application_deadline_tracker",
-    description: "Track senior-year application and aid deadlines.",
-    inputSchema: z.object({
-      schools: z.array(z.string()).default([]),
-      applicationStatus: z.string().optional(),
-    }),
-    lifecycleStages: ["unknown", "junior", "senior", "gap_year"],
-    async execute(input) {
-      return {
-        schools: input.schools,
-        applicationStatus: input.applicationStatus ?? "unknown",
-        checklist: ["Confirm each school deadline.", "Check FAFSA/state aid timing.", "Pick the next application task."],
-      };
-    },
-  }),
-  defineTool({
-    key: "essay_feedback",
-    description: "Give concise admissions essay feedback.",
-    inputSchema: z.object({
-      essayText: z.string().min(1),
-      prompt: z.string().optional(),
-      feedbackMode: z.enum(["quick", "structure", "voice", "final_polish"]).default("quick"),
-    }),
-    lifecycleStages: ["unknown", "junior", "senior", "transfer", "current_college", "gap_year"],
-    async execute(input) {
-      return {
-        feedbackMode: input.feedbackMode,
-        note:
-          "Essay review is scaffolded. Wire this to the LLM review pass before using it for detailed admissions feedback.",
-        prompt: input.prompt,
-        characterCount: input.essayText.length,
+        status: discovery.status,
+        source: discovery.source,
+        query: discovery.query,
+        missingRecommendedInputs: discovery.missingRecommendedInputs,
+        caveats: discovery.caveats,
+        results: discovery.results,
       };
     },
   }),

@@ -84,6 +84,14 @@ export interface AgentMessageRecord {
   processedAt?: Date;
 }
 
+export interface AgentConversationMessage {
+  threadId: string;
+  channel: AgentChannel;
+  role: Extract<AgentMessageRole, "user" | "assistant">;
+  body: string;
+  occurredAt: Date;
+}
+
 export interface AgentTurnInput {
   channel: AgentChannel;
   userId: string;
@@ -91,6 +99,7 @@ export interface AgentTurnInput {
   text: string;
   timestamp: Date;
   externalMessageId?: string;
+  metadata?: JsonObject;
 }
 
 export interface AgentTurnResult {

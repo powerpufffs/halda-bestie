@@ -1,3 +1,3 @@
 export function buildEmergencyFallbackReply(): string {
-  return "i'm having trouble generating a real response right now. try me again in a sec.";
+  return "i'm having trouble for a sec. try me again?";
 }

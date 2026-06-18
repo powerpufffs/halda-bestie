@@ -12,6 +12,7 @@ export interface AppEnv {
   nylasScopes: string[];
   nylasHaldaInboxGrantId?: string;
   haldaInboxEmail?: string;
+  haldaSmsPhoneNumber?: string;
   llmApiKey?: string;
   llmBaseUrl?: string;
   llmModel?: string;
@@ -31,6 +32,7 @@ export function readAppEnv(): AppEnv {
     nylasScopes: readCsv(process.env.NYLAS_SCOPES),
     nylasHaldaInboxGrantId: readEnv(process.env.NYLAS_HALDA_INBOX_GRANT_ID),
     haldaInboxEmail: readEnv(process.env.HALDA_INBOX_EMAIL),
+    haldaSmsPhoneNumber: readEnv(process.env.HALDA_SMS_PHONE_NUMBER),
     llmApiKey: readEnv(process.env.LLM_API_KEY),
     llmBaseUrl: readEnv(process.env.LLM_BASE_URL),
     llmModel: readEnv(process.env.LLM_MODEL),

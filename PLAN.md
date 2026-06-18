@@ -441,12 +441,12 @@ Each student lifecycle stage should map to an explicit agent profile. These prof
 Start with profiles in code/config, not the database:
 
 ```txt
-halda-agent/src/agent/profiles/unknown.ts
-halda-agent/src/agent/profiles/sophomore.ts
-halda-agent/src/agent/profiles/junior.ts
-halda-agent/src/agent/profiles/senior.ts
-halda-agent/src/agent/profiles/transfer.ts
-halda-agent/src/agent/profiles/current-college.ts
+agent/src/agent/profiles/unknown.ts
+agent/src/agent/profiles/sophomore.ts
+agent/src/agent/profiles/junior.ts
+agent/src/agent/profiles/senior.ts
+agent/src/agent/profiles/transfer.ts
+agent/src/agent/profiles/current-college.ts
 ```
 
 Each lifecycle agent profile defines:

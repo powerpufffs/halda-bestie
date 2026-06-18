@@ -1,5 +1,5 @@
 {
-  "name": "halda-hackathon",
+  "name": "halda-agent",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "spectrum-ts": "^4.2.0"
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9",
+    "spectrum-ts": "^4.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "typescript": "^5",

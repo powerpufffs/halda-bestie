@@ -1,12 +1,14 @@
-# halda-hackathon — agent instructions
+# halda-agent instructions
 
-This is a [Spectrum](https://photon.codes/docs/spectrum-ts) app, pinned to `spectrum-ts@^4.2.0`. The entry point is `src/index.ts`, which configures the iMessage provider(s) and runs the echo loop.
+This is a [Spectrum](https://photon.codes/docs/spectrum-ts) app, pinned to `spectrum-ts@^4.2.0`. The entry point is `src/index.ts`, which configures the iMessage provider and runs the agent loop.
 
 ## Working in this project
 
-- Run the app with `pnpm start`.
+- Run the app with `bun run start`.
 - Add providers by importing them in `src/index.ts` and listing them in the `Spectrum({ providers: [...] })` config.
 - Outgoing message content uses the builders documented in the skill (text, attachment, voice, contact, richlink, poll, group, custom).
+- Lifecycle-specific behavior lives under `src/agent/profiles`.
+- Global and lifecycle tools live under `src/tools`.
 
 ## Environment
 

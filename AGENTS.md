@@ -4,8 +4,8 @@ This repo is a small monorepo for the Halda HITLAB hackathon.
 
 ## Structure
 
-- `frontend/` - Next.js App Router frontend with Tailwind CSS, nuqs, and TanStack Query.
-- `halda-agent/` - Spectrum-based messaging agent.
+- `app/` - Next.js App Router frontend with Tailwind CSS, nuqs, and TanStack Query.
+- `agent/` - Spectrum-based messaging agent.
 - `PLAN.md` - strategic product and architecture plan. Read it when changing product direction, schema, demo flows, or major architecture. Do not load it for routine edits.
 
 ## Operating Procedures
@@ -21,7 +21,7 @@ This repo is a small monorepo for the Halda HITLAB hackathon.
 ## Common Commands
 
 - `just install`
-- `just dev-frontend`
+- `just dev-app`
 - `just dev-agent`
 - `just lint`
 - `just typecheck`

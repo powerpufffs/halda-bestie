@@ -7,20 +7,20 @@ install:
     bun install
 
 dev-agent:
-    bun run --cwd halda-agent dev
+    bun run --cwd agent dev
 
-dev-frontend:
-    bun run --cwd frontend dev
+dev-app:
+    bun run --cwd app dev
 
 lint:
     bun run lint
-    bun run lint:frontend
+    bun run lint:app
 
 typecheck:
     bun run typecheck
 
-build-frontend:
-    bun run build:frontend
+build-app:
+    bun run build:app
 
 check:
     just lint

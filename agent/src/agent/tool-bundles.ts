@@ -20,7 +20,7 @@ const channelToolKeys: Partial<Record<AgentChannel, string[]>> = {
 
 const intentToolKeys: Record<string, string[]> = {
   application: ["application_deadline_tracker", "essay_feedback"],
-  career: ["career_interest_quiz"],
+  career: ["career_interest_quiz", "explore_career"],
   college_search: ["lookup_college", "college_match_search"],
   financial_aid: ["fafsa_checklist"],
   transfer: ["credit_transfer_estimator", "major_requirement_compare"],

@@ -12,6 +12,12 @@ dev-agent:
 dev-app:
     bun run --cwd app dev
 
+db-migrate:
+    bun run db:migrate
+
+db-studio:
+    bun run db:studio
+
 lint:
     bun run lint
     bun run lint:app

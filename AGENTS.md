@@ -4,8 +4,8 @@ This repo is a small monorepo for the Halda HITLAB hackathon.
 
 ## Structure
 
-- `app/` - Next.js App Router frontend with Tailwind CSS, nuqs, and TanStack Query.
-- `agent/` - Spectrum-based messaging agent.
+- `app/` - Next.js App Router frontend with Tailwind CSS, nuqs, TanStack Query, Drizzle, and Zod.
+- `agent/` - Spectrum-based messaging agent with Drizzle and Zod.
 - `PLAN.md` - strategic product and architecture plan. Read it when changing product direction, schema, demo flows, or major architecture. Do not load it for routine edits.
 
 ## Operating Procedures
@@ -23,6 +23,8 @@ This repo is a small monorepo for the Halda HITLAB hackathon.
 - `just install`
 - `just dev-app`
 - `just dev-agent`
+- `just db-migrate`
+- `just db-studio`
 - `just lint`
 - `just typecheck`
 - `just check`
@@ -30,5 +32,7 @@ This repo is a small monorepo for the Halda HITLAB hackathon.
 ## Tooling
 
 - Package manager: Bun.
+- Database: Postgres with Drizzle. Use Drizzle for schema-aware database access and migrations. Keep shared migrations in `drizzle/` at the repo root, and run them with `bun run db:migrate` or `just db-migrate`.
+- Runtime validation: Zod. Prefer Zod schemas for external input, environment/config validation, tool payloads, and DB-adjacent parsing in both `app/` and `agent/`.
 - Frontend lint: Next.js ESLint config.
 - Repo lint: Oxlint with correctness errors and a 500-line max-file rule.

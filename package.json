@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "build:app": "bun run --cwd app build",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
     "dev:agent": "bun run --cwd agent dev",
     "dev:app": "bun run --cwd app dev",
     "lint": "oxlint .",

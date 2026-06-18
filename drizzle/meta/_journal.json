@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1781755046148,
+      "tag": "0000_initial_halda_schema",
+      "breakpoints": false
+    }
+  ]
+}

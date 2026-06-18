@@ -17,6 +17,7 @@ import {
 } from "./postgres-state-codec.ts";
 import type {
   AgentEvent,
+  AgentMessageRecord,
   AgentOpenLoop,
   ConversationState,
   StudentProfileState,
@@ -100,7 +101,10 @@ export class PostgresAgentStateStore implements AgentStateStore {
       returning id
     `);
 
-    if (updated.length > 0) return;
+    if (updated.length > 0) {
+      await this.#updateUserFromProfile(dbUserId, profile);
+      return;
+    }
 
     await this.#rows<IdRow>(sql`
       insert into halda.user_profiles (
@@ -137,6 +141,7 @@ export class PostgresAgentStateStore implements AgentStateStore {
       )
       returning id
     `);
+    await this.#updateUserFromProfile(dbUserId, profile);
   }
 
   async getConversationState(userId: string, threadId: string): Promise<ConversationState> {
@@ -293,6 +298,51 @@ export class PostgresAgentStateStore implements AgentStateStore {
     `);
   }
 
+  async logMessage(message: AgentMessageRecord): Promise<void> {
+    const participant = await this.#ensureUserIdentity(message.userId);
+    const { conversationId } = await this.#ensureConversation(message.userId, message.threadId);
+    const isUserMessage = message.role === "user";
+
+    await this.#rows<IdRow>(sql`
+      insert into halda.messages (
+        conversation_id,
+        messaging_platform_id,
+        from_identity_id,
+        to_identity_id,
+        from_address,
+        to_address,
+        external_message_id,
+        external_thread_id,
+        role,
+        content_type,
+        body,
+        status,
+        occurred_at,
+        processed_at,
+        metadata
+      )
+      values (
+        ${conversationId}::uuid,
+        ${participant.platformId}::uuid,
+        ${isUserMessage ? sql`${participant.identityId}::uuid` : sql`null`},
+        ${isUserMessage ? sql`null` : sql`${participant.identityId}::uuid`},
+        ${isUserMessage ? participant.identity.externalIdentity : "halda-agent"},
+        ${isUserMessage ? "halda-agent" : participant.identity.externalIdentity},
+        ${message.externalMessageId ?? null},
+        ${message.threadId},
+        ${message.role},
+        'text',
+        ${message.body},
+        ${message.status},
+        ${timestamptz(message.occurredAt)},
+        ${message.processedAt ? timestamptz(message.processedAt) : null},
+        ${jsonb(message.metadata ?? {})}
+      )
+      on conflict do nothing
+      returning id
+    `);
+  }
+
   async logEvents(events: AgentEvent[]): Promise<void> {
     for (const event of events) {
       // eslint-disable-next-line no-await-in-loop -- keep user/conversation creation ordered for a turn.
@@ -398,10 +448,20 @@ export class PostgresAgentStateStore implements AgentStateStore {
   }
 
   async #ensureUser(userId: string): Promise<string> {
+    return (await this.#ensureUserIdentity(userId)).dbUserId;
+  }
+
+  async #ensureUserIdentity(userId: string): Promise<{
+    dbUserId: string;
+    identityId: string;
+    platformId: string;
+    identity: ReturnType<typeof parseIdentity>;
+  }> {
     const identity = parseIdentity(userId);
     const platformId = await this.#ensurePlatform(identity.platformKey);
-    const [existing] = await this.#rows<IdRow>(sql`
-      select user_id as id
+    const [existing] = await this.#rows<IdRow & { user_id: string }>(sql`
+      select id,
+             user_id
       from halda.user_messaging_identities
       where messaging_platform_id = ${platformId}::uuid
         and normalized_identity = ${identity.normalizedIdentity}
@@ -409,17 +469,29 @@ export class PostgresAgentStateStore implements AgentStateStore {
       limit 1
     `);
 
-    if (existing) return existing.id;
+    if (existing) {
+      return {
+        dbUserId: existing.user_id,
+        identityId: existing.id,
+        platformId,
+        identity,
+      };
+    }
 
     const [createdUser] = await this.#rows<IdRow>(sql`
       insert into halda.users (metadata)
-      values (${jsonb({ firstSeenExternalUserId: userId })})
+      values (${jsonb({
+        accountStatus: "anonymous",
+        anonymous: true,
+        firstSeenExternalUserId: userId,
+        firstSeenPlatform: identity.platformKey,
+      })})
       returning id
     `);
 
     if (!createdUser) throw new Error("Failed to create user");
 
-    await this.#rows<IdRow>(sql`
+    const [createdIdentity] = await this.#rows<IdRow>(sql`
       insert into halda.user_messaging_identities (
         user_id,
         messaging_platform_id,
@@ -439,7 +511,27 @@ export class PostgresAgentStateStore implements AgentStateStore {
       returning id
     `);
 
-    return createdUser.id;
+    if (!createdIdentity) throw new Error("Failed to create messaging identity");
+
+    return {
+      dbUserId: createdUser.id,
+      identityId: createdIdentity.id,
+      platformId,
+      identity,
+    };
+  }
+
+  async #updateUserFromProfile(dbUserId: string, profile: StudentProfileState): Promise<void> {
+    const metadata = userMetadataFromProfile(profile);
+
+    await this.#rows<IdRow>(sql`
+      update halda.users
+      set user_type = ${userTypeFromProfile(profile)},
+          metadata = metadata || ${jsonb(metadata)}
+      where id = ${dbUserId}::uuid
+        and deleted_at is null
+      returning id
+    `);
   }
 
   async #ensurePlatform(platformKey: string): Promise<string> {
@@ -468,4 +560,38 @@ export class PostgresAgentStateStore implements AgentStateStore {
   async #rows<T>(query: SQL): Promise<T[]> {
     return (await this.#db.execute(query)) as unknown as T[];
   }
+}
+
+function userMetadataFromProfile(profile: StudentProfileState): Record<string, unknown> {
+  const onboarding = asRecord(profile.facts.onboarding);
+  const complete = profile.facts.onboardingComplete === true || onboarding.complete === true;
+
+  return {
+    accountStatus: complete ? "identified" : "anonymous",
+    anonymous: !complete,
+    lifecycleStage: profile.lifecycleStage,
+    agentProfileKey: profile.agentProfileKey,
+    onboardingComplete: complete,
+    onboardingRole: stringValue(profile.facts.onboardingRole) ?? stringValue(onboarding.role),
+    collegeIntent: stringValue(profile.facts.collegeIntent) ?? stringValue(onboarding.collegeIntent),
+    gradeLevel: stringValue(profile.facts.gradeLevel) ?? stringValue(onboarding.gradeLevel),
+    profileUpdatedAt: new Date().toISOString(),
+  };
+}
+
+function userTypeFromProfile(profile: StudentProfileState): string {
+  const onboardingRole = stringValue(profile.facts.onboardingRole);
+  if (onboardingRole === "supporter") return "guardian";
+  if (onboardingRole === "counselor") return "counselor";
+  if (onboardingRole === "institution_staff") return "institution_staff";
+  return "student";
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

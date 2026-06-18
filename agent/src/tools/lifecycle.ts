@@ -18,11 +18,6 @@ export const lifecycleTools = [
     }),
     lifecycleStages: ["unknown"],
     async execute(input) {
-      const quickIdQuestion =
-        input.stageGuess === "unknown"
-          ? "quick thing so I do not steer you wrong: are you in 10th, 11th, 12th, transferring, or already in college?"
-          : "got it. what are you trying to figure out next?";
-
       return {
         persona:
           "Friendly older-student energy: warm, concise, curious, never corporate, and allergic to form-prison onboarding.",
@@ -34,7 +29,8 @@ export const lifecycleTools = [
           "Save any interest signals for profile building.",
           "Avoid fake teen slang; sound like a helpful student friend.",
         ],
-        quickIdQuestion,
+        missingSlots: input.stageGuess === "unknown" ? ["lifecycle_stage"] : [],
+        suggestedStageOptions: ["10th", "11th", "12th", "transfer", "current_college"],
         roleGuess: input.roleGuess,
         stageGuess: input.stageGuess,
         interestSignals: input.interestSignals,
@@ -52,8 +48,8 @@ export const lifecycleTools = [
     lifecycleStages: ["unknown", "sophomore"],
     async execute(input) {
       return {
-        quizPrompt:
-          "Pick one: do you want work that feels hands-on, people-focused, creative, analytical, outdoorsy, or flexible?",
+        quizMode: "single_choice_interest_style",
+        options: ["hands-on", "people-focused", "creative", "analytical", "outdoorsy", "flexible"],
         knownInterests: input.knownInterests,
         confidenceLevel: input.confidenceLevel,
       };

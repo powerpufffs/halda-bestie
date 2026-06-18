@@ -12,10 +12,12 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "dev:agent": "bun run --cwd agent dev",
+    "dev:agent:terminal": "bun run --cwd agent dev:terminal",
     "dev:app": "bun run --cwd app dev",
     "lint": "oxlint .",
     "lint:app": "bun run --cwd app lint",
     "repair:imessage-native": "npm rebuild better-sqlite3",
+    "start:agent:terminal": "bun run --cwd agent start:terminal",
     "test:onboarding": "bun run --cwd agent test:onboarding",
     "typecheck": "bun run --cwd app typecheck && bun run --cwd agent typecheck"
   },

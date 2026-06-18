@@ -1,6 +1,6 @@
 import type { LlmToolDefinition } from "../tools/types.ts";
 
-export type AgentChannel = "imessage" | "sms" | "gmail" | "website" | "mobile_app";
+export type AgentChannel = "imessage" | "sms" | "gmail" | "website" | "mobile_app" | "terminal";
 
 export type LifecycleStage =
   | "unknown"
@@ -67,16 +67,34 @@ export interface AgentEvent {
   createdAt: Date;
 }
 
+export type AgentMessageRole = "user" | "assistant" | "system" | "tool";
+export type AgentMessageStatus = "received" | "queued" | "sent" | "failed" | "ignored";
+
+export interface AgentMessageRecord {
+  userId: string;
+  threadId: string;
+  channel: AgentChannel;
+  role: AgentMessageRole;
+  body: string;
+  status: AgentMessageStatus;
+  externalMessageId?: string;
+  metadata?: JsonObject;
+  occurredAt: Date;
+  processedAt?: Date;
+}
+
 export interface AgentTurnInput {
   channel: AgentChannel;
   userId: string;
   threadId: string;
   text: string;
   timestamp: Date;
+  externalMessageId?: string;
 }
 
 export interface AgentTurnResult {
   reply: string;
+  generationMode: "llm" | "fallback";
   profile: StudentProfileState;
   conversation: ConversationState;
   selectedToolKeys: string[];

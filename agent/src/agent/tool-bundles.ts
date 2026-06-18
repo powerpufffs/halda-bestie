@@ -16,6 +16,7 @@ const channelToolKeys: Partial<Record<AgentChannel, string[]>> = {
   sms: [],
   website: [],
   mobile_app: [],
+  terminal: [],
 };
 
 const intentToolKeys: Record<string, string[]> = {

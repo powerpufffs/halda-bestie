@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  AgentMessageRecord,
   AgentOpenLoop,
   ConversationState,
   LifecycleStage,
@@ -13,6 +14,7 @@ export interface AgentStateStore {
   saveConversationState(state: ConversationState): Promise<void>;
   listOpenLoops(userId: string): Promise<AgentOpenLoop[]>;
   upsertOpenLoop(loop: AgentOpenLoop): Promise<void>;
+  logMessage(message: AgentMessageRecord): Promise<void>;
   logEvents(events: AgentEvent[]): Promise<void>;
 }
 
@@ -20,6 +22,7 @@ export class InMemoryAgentStateStore implements AgentStateStore {
   readonly #profiles = new Map<string, StudentProfileState>();
   readonly #conversationStates = new Map<string, ConversationState>();
   readonly #openLoops = new Map<string, AgentOpenLoop>();
+  readonly #messages: AgentMessageRecord[] = [];
   readonly #events: AgentEvent[] = [];
 
   async getProfile(userId: string): Promise<StudentProfileState> {
@@ -33,7 +36,7 @@ export class InMemoryAgentStateStore implements AgentStateStore {
       lifecycleStageConfidence: 0,
       agentProfileKey: "unknown",
       profileVersion: 1,
-      facts: {},
+      facts: { accountStatus: "anonymous" },
       preferences: {},
       interests: [],
       constraints: [],
@@ -84,6 +87,10 @@ export class InMemoryAgentStateStore implements AgentStateStore {
 
   async upsertOpenLoop(loop: AgentOpenLoop): Promise<void> {
     this.#openLoops.set(loop.id, { ...loop, updatedAt: new Date() });
+  }
+
+  async logMessage(message: AgentMessageRecord): Promise<void> {
+    this.#messages.push(message);
   }
 
   async logEvents(events: AgentEvent[]): Promise<void> {

@@ -1,9 +1,9 @@
-import { inferLifecycleStage } from "./lifecycle.ts";
 import {
   createOpenLoop,
   type AgentStateStore,
   setLifecycleStage,
 } from "./state-store.ts";
+import type { TriageCollegeIntent, TriageRole, TurnTriage } from "./triage.ts";
 import type {
   AgentEvent,
   AgentOpenLoop,
@@ -13,15 +13,8 @@ import type {
   StudentProfileState,
 } from "./types.ts";
 
-type OnboardingRole =
-  | "student"
-  | "supporter"
-  | "counselor"
-  | "institution_staff"
-  | "not_college_bound"
-  | "unknown";
-
-type CollegeIntent = "looking_to_enter_college" | "helping_someone" | "not_looking" | "unknown";
+type OnboardingRole = TriageRole;
+type CollegeIntent = TriageCollegeIntent;
 
 type OnboardingResolution = "full_answer" | "partial_answer" | "topic_switch" | "no_answer";
 
@@ -47,6 +40,7 @@ interface AdvanceOnboardingInput {
   store: AgentStateStore;
   profile: StudentProfileState;
   openLoops: AgentOpenLoop[];
+  triage: TurnTriage;
 }
 
 export interface OnboardingAdvanceResult {
@@ -58,10 +52,13 @@ export interface OnboardingAdvanceResult {
   events: AgentEvent[];
 }
 
-const onboardingLoopTypes = new Set(["identify_person_context", "identify_grade_level"]);
+const onboardingLoopTypes = new Set([
+  "identify_person_context",
+  "identify_grade_level",
+]);
 
 export async function advanceOnboarding(input: AdvanceOnboardingInput): Promise<OnboardingAdvanceResult> {
-  const signals = detectOnboardingSignals(input.turn.text, input.profile);
+  const signals = onboardingSignalsFromTriage(input.triage);
   const previousMemory = readOnboardingMemory(input.profile);
   let memory = mergeOnboardingMemory(previousMemory, signals, input.turn.timestamp);
   let profile = applyOnboardingMemory(input.profile, memory);
@@ -88,7 +85,7 @@ export async function advanceOnboarding(input: AdvanceOnboardingInput): Promise<
     );
   await Promise.all(loopsToComplete);
 
-  if (neededLoop && !openLoopTypes.has(neededLoop.loopType)) {
+  if (neededLoop && !openLoopTypes.has(neededLoop.loopType) && shouldOpenOnboardingLoop(memory, signals, input.turn.text)) {
     await input.store.upsertOpenLoop(
       createOpenLoop({
         userId: input.turn.userId,
@@ -239,83 +236,16 @@ export function readOnboardingMemory(profile: StudentProfileState): OnboardingMe
   };
 }
 
-function detectOnboardingSignals(text: string, profile: StudentProfileState): OnboardingSignals {
-  const evidence: string[] = [];
-  const normalized = text.toLowerCase();
-  const lifecycle = inferLifecycleStage(text, profile);
-  const gradeLevel = detectGradeLevel(normalized);
-  const role = detectRole(normalized);
-  const collegeIntent = detectCollegeIntent(normalized, role, gradeLevel);
-
-  if (role) evidence.push(`role:${role}`);
-  if (collegeIntent) evidence.push(`college_intent:${collegeIntent}`);
-  if (gradeLevel) evidence.push(`grade:${gradeLevel}`);
-  if (lifecycle.stage !== "unknown" && lifecycle.reason !== "kept existing lifecycle stage") {
-    evidence.push(`lifecycle:${lifecycle.stage}`);
-  }
-
+function onboardingSignalsFromTriage(triage: TurnTriage): OnboardingSignals {
   return {
-    role,
-    collegeIntent,
-    gradeLevel,
-    lifecycleStage: lifecycle.stage !== "unknown" ? lifecycle.stage : undefined,
-    evidence,
+    role: triage.role !== "unknown" ? triage.role : undefined,
+    collegeIntent: triage.collegeIntent !== "unknown" ? triage.collegeIntent : undefined,
+    gradeLevel: triage.gradeLevel !== "unknown" ? triage.gradeLevel : undefined,
+    lifecycleStage: triage.lifecycleStage !== "unknown" ? triage.lifecycleStage : undefined,
+    evidence: triage.evidence.filter((item) =>
+      /^(role|college_intent|grade|lifecycle|accepted_school):/.test(item),
+    ),
   };
-}
-
-function detectRole(text: string): OnboardingRole | undefined {
-  if (/\b(not|don't|do not|dont|no)\b.{0,30}\b(college|university|school)\b/.test(text)) {
-    return "not_college_bound";
-  }
-
-  if (/\b(parent|guardian|mom|dad)\b/.test(text) || /\bmy (son|daughter|kid|child)\b/.test(text)) {
-    return "supporter";
-  }
-
-  if (/\b(counselor|advisor|teacher)\b/.test(text)) {
-    return "counselor";
-  }
-
-  if (/\b(admissions|staff|recruiter|institution)\b/.test(text)) {
-    return "institution_staff";
-  }
-
-  if (/\b(i am|i'm|im|me)\b/.test(text) || /\b(student|sophomore|junior|senior|transfer)\b/.test(text)) {
-    return "student";
-  }
-
-  return undefined;
-}
-
-function detectCollegeIntent(
-  text: string,
-  role: OnboardingRole | undefined,
-  gradeLevel: string | undefined,
-): CollegeIntent | undefined {
-  if (role === "not_college_bound") return "not_looking";
-  if (role && ["supporter", "counselor", "institution_staff"].includes(role)) return "helping_someone";
-
-  if (
-    /\b(college|university|school|major|career|apply|application|fafsa|scholarship|transfer)\b/.test(text) ||
-    /\b(nursing|computer science|coding|business|healthcare)\b/.test(text) ||
-    Boolean(gradeLevel)
-  ) {
-    return "looking_to_enter_college";
-  }
-
-  return undefined;
-}
-
-function detectGradeLevel(text: string): string | undefined {
-  if (/\b9th\b|\bfreshman\b/.test(text) && !/\bcollege\b/.test(text)) return "9th";
-  if (/\b10th\b|\bsophomore\b/.test(text)) return "10th";
-  if (/\b11th\b|\bjunior\b/.test(text)) return "11th";
-  if (/\b12th\b|\bsenior\b/.test(text)) return "12th";
-  if (/\btransfer|transferring|community college\b/.test(text)) return "transfer";
-  if (/\bin college\b|\bcollege student\b|\bfreshman in college\b|\balready in college\b/.test(text)) return "current_college";
-  if (/\bgap year\b|\btook a year off\b/.test(text)) return "gap_year";
-
-  return undefined;
 }
 
 function mergeOnboardingMemory(
@@ -388,7 +318,7 @@ function getNeededOnboardingLoop(memory: OnboardingMemory) {
       loopType: "identify_person_context",
       priority: 30,
       prompt:
-        "quick context so I pick the right mode: are you a student looking at college, helping someone, or not really looking at college?",
+        "are you a student looking at college, helping someone, or not really looking at college?",
     };
   }
 
@@ -398,12 +328,25 @@ function getNeededOnboardingLoop(memory: OnboardingMemory) {
       priority: 20,
       prompt:
         memory.collegeIntent === "helping_someone"
-          ? "got it — what grade/year is the student you are helping? 10th, 11th, 12th, transfer, already in college, or something else?"
-          : "got it — what grade/year are you? 10th, 11th, 12th, transfer, already in college, or something else?",
+          ? "what grade/year is the student you are helping - 10th, 11th, 12th, transfer, already in college, or something else?"
+          : "what grade/year are you - 10th, 11th, 12th, transfer, already in college, or something else?",
     };
   }
 
   return undefined;
+}
+
+function shouldOpenOnboardingLoop(
+  memory: OnboardingMemory,
+  signals: OnboardingSignals,
+  text: string,
+): boolean {
+  if (signals.evidence.length > 0) return true;
+  if (memory.role !== "unknown" || memory.collegeIntent !== "unknown") return true;
+
+  return /\b(college|university|school|major|career|apply|application|fafsa|scholarship|transfer|tuition|admission|accepted|admitted)\b/i.test(
+    text,
+  );
 }
 
 function classifyOnboardingResolution(
@@ -418,7 +361,7 @@ function classifyOnboardingResolution(
   }
 
   if (!neededLoopType) return "full_answer";
-  return hadOnboardingLoop ? "partial_answer" : "no_answer";
+  return "partial_answer";
 }
 
 function buildStateBlob(profile: StudentProfileState, goalStack: string[]): JsonObject {

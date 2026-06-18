@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "app",
+      "runtimeExecutable": "/Users/joshuatai/Documents/halda-bestie/app/node_modules/.bin/next",
+      "runtimeArgs": ["dev", "app"],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}

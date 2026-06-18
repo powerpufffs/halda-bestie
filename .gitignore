@@ -9,3 +9,7 @@ out
 .turbo
 *.log
 .DS_Store
+
+# Generated when running next dev from repo root
+/next-env.d.ts
+/tsconfig.tsbuildinfo

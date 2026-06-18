@@ -45,10 +45,12 @@ function answerForIntent(intent: StudentIntent, stage: LifecycleStage): string {
 }
 
 function buildReanchor(profile: StudentProfileState, openLoops: AgentOpenLoop[]): string | undefined {
-  const lifecycleLoop = openLoops.find((loop) => loop.loopType === "collect_lifecycle_stage");
+  const onboardingLoop = openLoops.find((loop) =>
+    ["identify_person_context", "identify_grade_level", "collect_lifecycle_stage"].includes(loop.loopType),
+  );
 
-  if (profile.lifecycleStage === "unknown" && lifecycleLoop) {
-    return lifecycleLoop.prompt;
+  if (onboardingLoop) {
+    return onboardingLoop.prompt;
   }
 
   return undefined;

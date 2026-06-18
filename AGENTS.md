@@ -34,5 +34,6 @@ This repo is a small monorepo for the Halda HITLAB hackathon.
 - Package manager: Bun.
 - Database: Postgres with Drizzle. Use Drizzle for schema-aware database access and migrations. Keep shared migrations in `drizzle/` at the repo root, and run them with `bun run db:migrate` or `just db-migrate`.
 - Runtime validation: Zod. Prefer Zod schemas for external input, environment/config validation, tool payloads, and DB-adjacent parsing in both `app/` and `agent/`.
+- LLM config: use provider-neutral `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` for OpenAI-compatible providers. Avoid provider-specific env names unless the provider truly requires them.
 - Frontend lint: Next.js ESLint config.
 - Repo lint: Oxlint with correctness errors and a 500-line max-file rule.

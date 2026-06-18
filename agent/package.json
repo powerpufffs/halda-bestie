@@ -9,10 +9,12 @@
     "start:cloud": "IMESSAGE_MODE=cloud node --env-file=.env --import tsx src/index.ts",
     "start:local": "IMESSAGE_MODE=local node --env-file=.env --import tsx src/index.ts",
     "dev": "node --env-file=.env --import tsx --watch src/index.ts",
+    "test:onboarding": "node --import tsx src/demo/onboarding-smoke.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
+    "openai": "^6.44.0",
     "postgres": "^3.4.9",
     "spectrum-ts": "^4.2.0",
     "zod": "^4.4.3"

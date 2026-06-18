@@ -1,14 +1,14 @@
 import { globalTools } from "./global.ts";
 import { lifecycleTools } from "./lifecycle.ts";
-import type { ToolDefinition } from "./types.ts";
+import type { AnyToolDefinition } from "./types.ts";
 
-const allTools = [...globalTools, ...lifecycleTools];
+const allTools = [...globalTools, ...lifecycleTools] satisfies AnyToolDefinition[];
 
-export const toolRegistry = new Map(allTools.map((tool) => [tool.key, tool]));
+export const toolRegistry: Map<string, AnyToolDefinition> = new Map(allTools.map((tool) => [tool.key, tool]));
 
-export function resolveTools(toolKeys: string[]): ToolDefinition[] {
+export function resolveTools(toolKeys: string[]): AnyToolDefinition[] {
   const seen = new Set<string>();
-  const resolved: ToolDefinition[] = [];
+  const resolved: AnyToolDefinition[] = [];
 
   for (const key of toolKeys) {
     if (seen.has(key)) continue;

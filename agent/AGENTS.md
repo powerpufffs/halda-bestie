@@ -16,6 +16,8 @@ This project reads secrets from `.env` (gitignored). **Do not read, write, or ec
 
 If startup fails with an authentication error, tell the user to verify their `PROJECT_ID` / `PROJECT_SECRET` at the [Photon dashboard](https://app.photon.codes).
 
+LLM provider config is intentionally provider-neutral. Use `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` for OpenAI-compatible providers; do not add provider-specific env names such as `MOONSHOT_API_KEY` unless there is a hard requirement.
+
 ## Spectrum SDK reference
 
 This project includes the `spectrum` skill from [`photon-hq/skills`](https://github.com/photon-hq/skills). Your agent should auto-discover it. If it doesn't, or if you switch agents, install for your agent with:

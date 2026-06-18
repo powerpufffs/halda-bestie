@@ -18,12 +18,18 @@ db-migrate:
 db-studio:
     bun run db:studio
 
+repair-imessage-native:
+    bun run repair:imessage-native
+
 lint:
     bun run lint
     bun run lint:app
 
 typecheck:
     bun run typecheck
+
+test-onboarding:
+    bun run test:onboarding
 
 build-app:
     bun run build:app

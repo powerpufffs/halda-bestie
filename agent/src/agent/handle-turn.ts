@@ -3,12 +3,9 @@ import { assembleToolBundle } from "./tool-bundles.ts";
 import type { AgentEvent, AgentTurnInput, AgentTurnResult, StudentProfileState } from "./types.ts";
 import { classifyIntent } from "./intent.ts";
 import { inferLifecycleStage } from "./lifecycle.ts";
+import { advanceOnboarding } from "./onboarding.ts";
 import { buildReply } from "./reply.ts";
-import {
-  createOpenLoop,
-  type AgentStateStore,
-  setLifecycleStage,
-} from "./state-store.ts";
+import { type AgentStateStore, setLifecycleStage } from "./state-store.ts";
 
 export async function handleAgentTurn(
   input: AgentTurnInput,
@@ -19,17 +16,17 @@ export async function handleAgentTurn(
   const events: AgentEvent[] = [];
 
   const lifecycle = inferLifecycleStage(input.text, profile);
-  const selectedProfile = getLifecycleProfile(lifecycle.stage);
+  const inferredProfile = getLifecycleProfile(lifecycle.stage);
   const profileChanged =
     lifecycle.stage !== profile.lifecycleStage ||
-    selectedProfile.profileKey !== profile.agentProfileKey;
+    inferredProfile.profileKey !== profile.agentProfileKey;
 
   if (profileChanged) {
     profile = setLifecycleStage(
       profile,
       lifecycle.stage,
       lifecycle.confidence,
-      selectedProfile.profileKey,
+      inferredProfile.profileKey,
     );
     events.push({
       userId: input.userId,
@@ -42,14 +39,33 @@ export async function handleAgentTurn(
   }
 
   const intent = classifyIntent(input.text);
+  const onboarding = await advanceOnboarding({
+    turn: input,
+    store,
+    profile,
+    openLoops: await store.listOpenLoops(input.userId),
+  });
+  profile = onboarding.profile;
+  events.push(...onboarding.events);
+
+  const selectedProfile = getLifecycleProfile(profile.lifecycleStage);
   conversation = {
     ...conversation,
     agentProfileKey: selectedProfile.profileKey,
     currentIntent: intent,
-    shortTermSummary: `Latest intent: ${intent}. Latest message: ${input.text}`,
+    slotValues: {
+      ...conversation.slotValues,
+      goalStack: onboarding.goalStack,
+      stateBlob: onboarding.stateBlob,
+    },
+    shortTermSummary: [
+      `Latest intent: ${intent}.`,
+      `Onboarding: ${onboarding.resolution}.`,
+      `Active goals: ${onboarding.goalStack.join(", ") || "none"}.`,
+      `Latest message: ${input.text}`,
+    ].join(" "),
   };
 
-  const openLoops = await ensureLifecycleLoop(input, store, profile.lifecycleStage);
   const toolBundle = assembleToolBundle({
     channel: input.channel,
     lifecycleStage: profile.lifecycleStage,
@@ -62,7 +78,7 @@ export async function handleAgentTurn(
     text: input.text,
     intent,
     profile,
-    openLoops,
+    openLoops: onboarding.openLoops,
     selectedToolKeys: toolBundle.selectedToolKeys,
   });
 
@@ -84,42 +100,10 @@ export async function handleAgentTurn(
     profile,
     conversation,
     selectedToolKeys: toolBundle.selectedToolKeys,
+    toolCallDefinitions: toolBundle.toolCallDefinitions,
+    goalStack: onboarding.goalStack,
     events,
   };
-}
-
-async function ensureLifecycleLoop(
-  input: AgentTurnInput,
-  store: AgentStateStore,
-  lifecycleStage: string,
-) {
-  const existingOpenLoops = await store.listOpenLoops(input.userId);
-  const lifecycleLoop = existingOpenLoops.find((loop) => loop.loopType === "collect_lifecycle_stage");
-
-  if (lifecycleStage !== "unknown" && lifecycleLoop) {
-    await store.upsertOpenLoop({
-      ...lifecycleLoop,
-      status: "completed",
-      result: { lifecycleStage },
-    });
-
-    return existingOpenLoops.filter((loop) => loop.id !== lifecycleLoop.id);
-  }
-
-  if (lifecycleStage === "unknown" && !lifecycleLoop) {
-    const loop = createOpenLoop({
-      userId: input.userId,
-      threadId: input.threadId,
-      loopType: "collect_lifecycle_stage",
-      prompt: "quick thing so I do not steer you wrong: are you a sophomore, junior, senior, transfer student, or already in college?",
-      priority: 10,
-    });
-
-    await store.upsertOpenLoop(loop);
-    return [loop, ...existingOpenLoops];
-  }
-
-  return existingOpenLoops;
 }
 
 function updateProfileFromTurn(

@@ -1,5 +1,6 @@
 import type { AgentChannel, LifecycleStage } from "./types.ts";
 import type { LifecycleAgentProfile } from "./profiles/types.ts";
+import { toLlmToolDefinitions } from "../tools/llm-adapter.ts";
 import { globalToolKeys, resolveTools } from "../tools/registry.ts";
 
 interface ToolBundleInput {
@@ -39,6 +40,7 @@ export function assembleToolBundle(input: ToolBundleInput) {
 
   return {
     selectedToolKeys: tools.map((tool) => tool.key),
+    toolCallDefinitions: toLlmToolDefinitions(tools),
     tools,
   };
 }

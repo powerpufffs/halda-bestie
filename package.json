@@ -15,10 +15,15 @@
     "dev:app": "bun run --cwd app dev",
     "lint": "oxlint .",
     "lint:app": "bun run --cwd app lint",
+    "repair:imessage-native": "npm rebuild better-sqlite3",
+    "test:onboarding": "bun run --cwd agent test:onboarding",
     "typecheck": "bun run --cwd app typecheck && bun run --cwd agent typecheck"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10",
     "oxlint": "^1.70.0"
-  }
+  },
+  "trustedDependencies": [
+    "better-sqlite3"
+  ]
 }

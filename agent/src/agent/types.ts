@@ -1,3 +1,5 @@
+import type { LlmToolDefinition } from "../tools/types.ts";
+
 export type AgentChannel = "imessage" | "sms" | "gmail" | "website" | "mobile_app";
 
 export type LifecycleStage =
@@ -78,5 +80,7 @@ export interface AgentTurnResult {
   profile: StudentProfileState;
   conversation: ConversationState;
   selectedToolKeys: string[];
+  toolCallDefinitions: LlmToolDefinition[];
+  goalStack: string[];
   events: AgentEvent[];
 }

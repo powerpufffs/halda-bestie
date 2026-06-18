@@ -320,8 +320,10 @@ debounce/batch by channel thread or user
 load context:
 - recent messages
 - user
+- materialized user profile
 - identities
 - conversations
+- conversation state
 - open loops
 - recent agent events
 - institution enrollments
@@ -331,7 +333,10 @@ load context:
 classify latest intent + open-loop resolution
         |
         v
-assemble dynamic prompt + grade/intent/channel tool bundle
+select lifecycle agent profile
+        |
+        v
+assemble dynamic prompt + lifecycle/intent/channel tool bundle
         |
         v
 run LLM/tool loop
@@ -429,9 +434,82 @@ Future production path:
 
 Do not use runtime memory as canonical state. Runtime memory is allowed only for the current turn, current tool selection, debounce timers, and temporary generation state.
 
+## Lifecycle Agent Profiles
+
+Each student lifecycle stage should map to an explicit agent profile. These profiles are global definitions that control prompt posture, default goals, available tools, milestone logic, and what "good guidance" means for that student.
+
+Start with profiles in code/config, not the database:
+
+```txt
+halda-agent/src/agent/profiles/unknown.ts
+halda-agent/src/agent/profiles/sophomore.ts
+halda-agent/src/agent/profiles/junior.ts
+halda-agent/src/agent/profiles/senior.ts
+halda-agent/src/agent/profiles/transfer.ts
+halda-agent/src/agent/profiles/current-college.ts
+```
+
+Each lifecycle agent profile defines:
+
+- `profileKey`
+- lifecycle stage labels it can serve
+- system prompt fragment
+- tone and response policy
+- default student goals
+- default open loops
+- stage-specific tools
+- milestone model
+- risk flags
+- demo success criteria
+
+The database stores the student's current assigned profile and confidence. The code owns the actual prompt and tool bundle definitions so teammates can review behavior in normal source files.
+
+Lifecycle stage should support uncertainty:
+
+- `unknown`
+- `sophomore`
+- `junior`
+- `senior`
+- `transfer`
+- `current_college`
+- `gap_year`
+
+Students can also have tags that cross stages, such as `dual_enrollment`, `first_generation`, `international`, `parent_involved`, `transfer_curious`, or `athlete`.
+
 ## Agent State Model
 
-The student experiences one linear text thread. The agent internally tracks multiple open loops.
+The student experiences one linear text thread. The agent internally tracks lifecycle profile, short-term state, long-term state, open loops, and event history.
+
+### State Layers
+
+Raw session context:
+
+- Recent messages from the current channel/thread.
+- Used for immediate conversational continuity.
+- Kept small, usually the last N relevant messages plus current inbound burst.
+
+Short-term conversation state:
+
+- Current intent.
+- Current flow.
+- Partially filled slots.
+- Active lifecycle agent profile for this conversation.
+- Recent compact summary for this conversation.
+- Can start in `conversations.metadata`, then move to `conversation_states` if it grows.
+
+Long-term materialized profile:
+
+- Current lifecycle stage and confidence.
+- Stable facts, interests, preferences, constraints, communication style, and milestone progress.
+- Read directly at runtime so the agent does not need to re-parse all past messages.
+- Lives in `user_profiles`.
+
+Append-only history:
+
+- `messages` records raw transcript.
+- `user_events` records product/student timeline.
+- `agent_events` records AI actions and tool calls.
+- Profile snapshots preserve how the materialized profile changed over time.
 
 ### Open Loops
 
@@ -478,6 +556,22 @@ Agent events are useful for:
 - Analytics.
 - Future replay/evaluation.
 
+### Materialized User Profile
+
+`user_profiles` is the fast-read current state for the agent. It is intentionally mutable.
+
+Examples of materialized profile state:
+
+- lifecycle stage: senior
+- profile summary: "Maya is a senior in Utah exploring nursing. She is first-gen, cost-sensitive, and worried about deadlines."
+- interests: nursing, healthcare, staying near Utah County
+- constraints: cost, deadline anxiety, needs parent/counselor summary
+- communication style: concise, reassuring, likes checklists
+- milestones: FAFSA not started, school list started, essay draft not started
+- tool access: senior tools, scholarship tools, email summary tools
+
+This state is updated by explicit tools, post-turn compaction, and important user events.
+
 ### User Events
 
 User events are product/business timeline events.
@@ -493,20 +587,49 @@ Examples:
 - requested_email_summary
 - added_application_deadline
 
+### Profile Snapshots
+
+Keep the current profile mutable, but snapshot it whenever it is compacted or materially changed.
+
+Snapshot triggers:
+
+- Lifecycle stage changes.
+- Major interests or constraints change.
+- A milestone is completed.
+- A profile compaction job runs.
+- A teammate manually corrects a profile during demo prep.
+
+This gives us both speed and auditability:
+
+```txt
+append-only events -> materialized profile -> versioned snapshots
+```
+
 ## Dynamic Tool Bundles
 
 Do not provide the LLM with one massive tool list. Assemble tools per turn.
 
 ```txt
 tools = base tools
-      + grade-specific tools
+      + lifecycle agent profile tools
       + current-intent tools
       + channel-specific tools
+```
+
+Runtime assembly:
+
+```txt
+load user_profile.lifecycle_stage
+load matching lifecycle agent profile
+merge base prompt + lifecycle prompt + profile summary
+merge base tools + lifecycle tools + intent tools + channel tools
 ```
 
 ### Base Tools
 
 - save_profile_fact
+- update_user_profile
+- snapshot_user_profile
 - create_open_loop
 - complete_open_loop
 - snooze_open_loop
@@ -617,21 +740,27 @@ Postgres version assumption:
 ### Core Tables
 
 - `halda.users`
+- `halda.user_profiles`
 - `halda.messaging_platforms`
 - `halda.user_messaging_identities`
 - `halda.conversations`
+- `halda.conversation_states`
 - `halda.messages`
 - `halda.pre_tertiary_institutions`
 - `halda.tertiary_institutions`
 - `halda.user_institution_enrollments`
 - `halda.user_events`
+- `halda.user_profile_snapshots`
 - `halda.agent_open_loops`
 - `halda.agent_events`
 
-Profile facts:
+Profile memory:
 
-- For the hackathon, store flexible profile facts in `users.metadata`, `user_events.metadata`, and open-loop results.
-- Promote stable profile fields into columns or a dedicated `user_profile_facts` table only after requirements settle.
+- `user_profiles` is the mutable fast-read state the agent loads every turn.
+- `user_profile_snapshots` stores version history whenever the profile is compacted or materially changed.
+- `user_events` remains the immutable timeline used for analytics and profile reconstruction.
+- Flexible facts should start in `user_profiles.facts`, `user_profiles.preferences`, `user_profiles.interests`, and `user_profiles.constraints`.
+- Promote stable facts into first-class columns only after requirements settle.
 
 ### Runtime Tables
 
@@ -652,6 +781,31 @@ create table if not exists halda.users (
   last_name text,
   user_type text not null default 'student'
     check (user_type in ('student', 'guardian', 'counselor', 'institution_staff', 'halda_agent', 'system')),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  modified_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists halda.user_profiles (
+  id uuid primary key default uuidv7(),
+  user_id uuid not null references halda.users(id),
+  lifecycle_stage text not null default 'unknown'
+    check (lifecycle_stage in ('unknown', 'sophomore', 'junior', 'senior', 'transfer', 'current_college', 'gap_year')),
+  lifecycle_stage_confidence numeric(4, 3) not null default 0
+    check (lifecycle_stage_confidence >= 0 and lifecycle_stage_confidence <= 1),
+  agent_profile_key text not null default 'unknown',
+  profile_version integer not null default 1,
+  profile_summary text,
+  facts jsonb not null default '{}'::jsonb,
+  preferences jsonb not null default '{}'::jsonb,
+  interests jsonb not null default '{}'::jsonb,
+  constraints jsonb not null default '{}'::jsonb,
+  milestones jsonb not null default '{}'::jsonb,
+  tool_access jsonb not null default '{}'::jsonb,
+  communication_style jsonb not null default '{}'::jsonb,
+  tags text[] not null default array[]::text[],
+  last_compacted_at timestamptz,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   modified_at timestamptz not null default now(),
@@ -761,6 +915,22 @@ create table if not exists halda.conversations (
   deleted_at timestamptz
 );
 
+create table if not exists halda.conversation_states (
+  id uuid primary key default uuidv7(),
+  user_id uuid not null references halda.users(id),
+  conversation_id uuid not null references halda.conversations(id),
+  agent_profile_key text not null default 'unknown',
+  current_intent text,
+  current_flow text,
+  slot_values jsonb not null default '{}'::jsonb,
+  short_term_summary text,
+  expires_at timestamptz,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  modified_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
 create table if not exists halda.messages (
   id uuid primary key default uuidv7(),
   conversation_id uuid not null references halda.conversations(id),
@@ -796,6 +966,24 @@ create table if not exists halda.user_events (
   message_id uuid references halda.messages(id),
   event_type text not null,
   occurred_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  modified_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists halda.user_profile_snapshots (
+  id uuid primary key default uuidv7(),
+  user_id uuid not null references halda.users(id),
+  user_profile_id uuid not null references halda.user_profiles(id),
+  profile_version integer not null,
+  lifecycle_stage text not null,
+  agent_profile_key text not null,
+  profile_json jsonb not null,
+  snapshot_reason text not null default 'compaction'
+    check (snapshot_reason in ('compaction', 'lifecycle_transition', 'milestone_update', 'manual_correction', 'backfill', 'debug')),
+  created_from_message_id uuid references halda.messages(id),
+  created_from_event_id uuid references halda.user_events(id),
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   modified_at timestamptz not null default now(),
@@ -869,6 +1057,30 @@ create unique index if not exists user_messaging_identities_platform_identity_ui
   on halda.user_messaging_identities (messaging_platform_id, normalized_identity)
   where deleted_at is null;
 
+create unique index if not exists user_profiles_user_uidx
+  on halda.user_profiles (user_id)
+  where deleted_at is null;
+
+create index if not exists user_profiles_lifecycle_stage_idx
+  on halda.user_profiles (lifecycle_stage, agent_profile_key)
+  where deleted_at is null;
+
+create unique index if not exists conversation_states_conversation_uidx
+  on halda.conversation_states (conversation_id)
+  where deleted_at is null;
+
+create index if not exists conversation_states_user_idx
+  on halda.conversation_states (user_id, id desc)
+  where deleted_at is null;
+
+create unique index if not exists user_profile_snapshots_version_uidx
+  on halda.user_profile_snapshots (user_id, profile_version)
+  where deleted_at is null;
+
+create index if not exists user_profile_snapshots_user_idx
+  on halda.user_profile_snapshots (user_id, id desc)
+  where deleted_at is null;
+
 create unique index if not exists messages_platform_external_message_uidx
   on halda.messages (messaging_platform_id, external_message_id)
   where external_message_id is not null and deleted_at is null;
@@ -929,14 +1141,17 @@ declare
 begin
   foreach table_name in array array[
     'users',
+    'user_profiles',
     'messaging_platforms',
     'user_messaging_identities',
     'pre_tertiary_institutions',
     'tertiary_institutions',
     'user_institution_enrollments',
     'conversations',
+    'conversation_states',
     'messages',
     'user_events',
+    'user_profile_snapshots',
     'agent_open_loops',
     'agent_events',
     'agent_runs'
@@ -994,29 +1209,34 @@ Owner: backend
   - find or create conversation
   - insert inbound message
   - insert outbound message
-  - save flexible profile facts in `users.metadata`
+  - find or create user profile
+  - update materialized profile fields
+  - snapshot user profile after compaction or lifecycle changes
+  - load and update conversation state
   - create/list/complete open loops
   - log agent event
 
 Success:
 
-- Sending one Spectrum message creates user, identity, conversation, inbound message, outbound message.
+- Sending one Spectrum message creates user, identity, profile, conversation, conversation state, inbound message, outbound message.
 
 ### Phase 2 - Agent Core
 
 Owner: agent
 
 - Build `handleInboundMessage(normalizedMessage)`.
+- Build lifecycle agent profile registry.
 - Build context loader.
 - Build intent/open-loop classifier.
 - Build prompt composer.
 - Build dynamic tool bundle assembler.
+- Build profile update and compaction policy.
 - Build response generator.
-- Build action applier that writes open loops/events/messages.
+- Build action applier that writes profile updates/open loops/events/messages.
 
 Success:
 
-- Agent can ask for grade, remember it, answer unrelated questions, and re-anchor later.
+- Agent can infer/confirm lifecycle stage, select the right lifecycle profile, remember it in `user_profiles`, answer unrelated questions, and re-anchor later.
 
 ### Phase 3 - Spectrum Texting
 
@@ -1321,8 +1541,11 @@ Must have:
 - Spectrum texting end to end.
 - Messages persisted.
 - Users and identities persisted.
+- Materialized user profiles persisted.
 - Conversations persisted.
+- Conversation state persisted.
 - Open loops persisted.
+- Lifecycle agent profiles in code/config.
 - Grade-aware responses.
 - Real school lookup/comparison.
 - Demo personas seeded.
@@ -1350,6 +1573,8 @@ The project is demo-ready when:
 
 - A judge can text the agent and receive natural, useful replies.
 - The agent adapts to sophomore, junior, senior, and transfer contexts.
+- The agent loads a lifecycle-specific profile and tool bundle for each seeded persona.
+- The agent reads a materialized user profile instead of relying only on raw history.
 - The agent remembers across turns.
 - The agent handles topic switches without losing pending questions.
 - Real school data is used in at least one live flow.

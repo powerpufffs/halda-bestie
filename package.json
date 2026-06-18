@@ -1,0 +1,21 @@
+{
+  "name": "halda-bestie",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.9",
+  "workspaces": [
+    "frontend",
+    "halda-agent"
+  ],
+  "scripts": {
+    "build:frontend": "bun run --cwd frontend build",
+    "dev:agent": "bun run --cwd halda-agent dev",
+    "dev:frontend": "bun run --cwd frontend dev",
+    "lint": "oxlint .",
+    "lint:frontend": "bun run --cwd frontend lint",
+    "typecheck": "bun run --cwd frontend typecheck && bun run --cwd halda-agent typecheck"
+  },
+  "devDependencies": {
+    "oxlint": "^1.70.0"
+  }
+}

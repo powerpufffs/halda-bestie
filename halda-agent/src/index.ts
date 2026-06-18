@@ -21,7 +21,7 @@ console.log(
     : "[halda] Listening through the Spectrum project line.",
 );
 
-const numberAllowList = ["+18015896615", "+18018756414"];
+const numberAllowList = new Set(["+18015896615", "+18018756414"]);
 // `app.messages` is an async iterable. Each tick yields a `space` (the
 // conversation) and an inbound `message`. Reply by awaiting `space.send(...)`.
 for await (const [space, message] of app.messages) {
@@ -33,7 +33,7 @@ for await (const [space, message] of app.messages) {
     space: space.id,
   });
 
-  if (message.content.type === "text" && numberAllowList.includes(message.sender?.id ?? "")) {
+  if (message.content.type === "text" && numberAllowList.has(message.sender?.id ?? "")) {
     const reply = `echo: ${message.content.text}`;
 
     console.log("[halda] Sending reply", { to: space.id, text: reply });

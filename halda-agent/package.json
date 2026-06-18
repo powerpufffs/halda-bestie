@@ -8,7 +8,8 @@
     "start": "node --env-file=.env --import tsx src/index.ts",
     "start:cloud": "IMESSAGE_MODE=cloud node --env-file=.env --import tsx src/index.ts",
     "start:local": "IMESSAGE_MODE=local node --env-file=.env --import tsx src/index.ts",
-    "dev": "node --env-file=.env --import tsx --watch src/index.ts"
+    "dev": "node --env-file=.env --import tsx --watch src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "spectrum-ts": "^4.2.0"

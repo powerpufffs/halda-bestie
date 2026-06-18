@@ -2,5 +2,10 @@ node_modules
 .env
 .env.local
 dist
+.next
+.vercel
+coverage
+out
+.turbo
 *.log
 .DS_Store
